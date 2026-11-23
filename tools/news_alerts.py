@@ -43,9 +43,13 @@ from datetime import datetime
 #   queries: searches run on Google News and Bing News
 #   base:    starting importance level for this topic (1-5)
 # ---------------------------------------------------------------------------
-CANADA = r"canad|ontario|quebec|québec|ottawa|carney|leblanc|champagne|joly|doug ford|" \
-         r"windsor|oshawa|brampton|oakville|alliston|woodstock|cambridge|ingersoll|st\. thomas|" \
-         r"toronto|montreal|vancouver|alberta|b\.c\.|british columbia|cusma|unifor"
+CANADA = (r"canad|ontario|quebec|québec|ottawa|carney|leblanc|champagne|joly|doug ford|"
+          r"windsor|oshawa|brampton|oakville|alliston|woodstock|cambridge|ingersoll|st\. thomas|"
+          r"toronto|montreal|vancouver|alberta|b\.c\.|british columbia|cusma|unifor|"
+          r"nova scotia|new brunswick|manitoba|saskatchewan|newfoundland|labrador|prince edward island|\bp\.e\.i\.|"
+          r"yukon|nunavut|northwest territories|atlantic canada|maritimes|calgary|edmonton|winnipeg|regina|"
+          r"saskatoon|halifax|fredericton|moncton|charlottetown|st\. john's|mississauga|markham|kitchener|"
+          r"(?<=, )(ont|que|alta|sask|man|n\.s|n\.b|nfld|b\.c)\.")   # dateline style: "Winnipeg, Man."
 AUTO = r"\bauto|automo|vehicle|\bcars?\b|\bev\b|\bevs\b|electric vehicle|dealer|dealership|" \
        r"stellantis|chrysler|jeep|\bgm\b|general motors|ford motor|ford's|honda|toyota|hyundai|" \
        r"volkswagen|\bvw\b|tesla|nissan|kia|byd|battery|steel|aluminum|\bford\b(?! government)|unifor|automaker"
@@ -64,6 +68,10 @@ ASSOCS = {
 }
 
 CANADA_H = CANADA + r"|provinc|\bfpt\b"   # health news often says "provinces", not "Canada"
+AI_WORDS = re.compile(
+    r"(?i:artificial intelligence|\bai[- ]powered|\bai[- ]scribes?|medical scribes?|\bscribes?\b|ambient|"
+    r"dictation|clinical documentation|machine learning|large language models?|\bllms?\b|chatbots?|generative)|"
+    r"\bAI\b")
 HEALTH = r"health|hospital|nurs|physician|doctor|pharma|drug|dental|mental health|long-term care|" \
          r"care home|patient|medic|wait time|primary care|paramedic|psycholog|therap|chiropract"
 
@@ -120,6 +128,20 @@ TOPICS = [
      "queries": ['"Organizations for Health Action"',
                  '"HEAL" coalition health Canada',
                  "site:healthaction.ca"]},
+    # MP Michael Ma: his AI and health initiatives, including legislation he's expected to lead.
+    {"key": "michaelma", "assoc": "HEAL", "label": "Michael Ma", "base": 3,
+     "require": [re.compile(r"\bMichael Ma\b"),
+                 re.compile(r"(?i:bill|legislation|motion|petition|artificial intelligence|health|committee|tabled|"
+                            r"introduc|private member|scribe|technology|digital)|\bAI\b")],
+     "queries": ['"Michael Ma" MP',
+                 '"Michael Ma" (AI OR "artificial intelligence" OR bill OR health)']},
+    # AI in health care: AI scribes / ambient dictation, clinical AI, and rules for AI in health.
+    {"key": "aihealth", "assoc": "HEAL", "label": "AI in health", "base": 3,
+     "require": [CANADA_H, AI_WORDS, HEALTH + r"|clinic|legislation|\bbill\b|regulat"],
+     "queries": ['"AI scribe" OR "AI scribes" Canada',
+                 'Canada ("ambient AI" OR "AI dictation" OR "clinical documentation") doctors',
+                 'Canada "artificial intelligence" health care (doctors OR nurses OR hospitals OR patients)',
+                 'Canada AI health (legislation OR regulation OR bill OR privacy)']},
     {"key": "healthfunding", "assoc": "HEAL", "label": "Health funding", "base": 3,
      "require": [CANADA_H, HEALTH,
                  r"health transfer|health funding|funding for health|health care funding|health accord|"
@@ -176,7 +198,7 @@ TOPICS = [
      "queries": ['"Indigenous health" Canada federal']},
     {"key": "healthpolicy", "assoc": "HEAL", "label": "Health policy", "base": 2,
      "require": [CANADA_H, HEALTH,
-                 r"health canada|health minister|minister of health|federal|ottawa|parliament|commons|senate|"
+                 r"health canada|health minister|minister of health|federal|parliament|commons|senate|"
                  r"committee|bill c-|legislation|national strategy|standards|health ministers|fpt"],
      "queries": ['"health minister" Canada federal',
                  '"Health Canada" announces',
@@ -264,6 +286,7 @@ MINOR = re.compile(  # +1: notable developments
     r"talks|negotiat|deadline|review|retaliat|countermeasure|exempt|remission|quota|"
     r"layoff|lay off|laid off|job cuts|shift|idl(e|ed|ing)|invest|billion|new plant|retool|"
     r"rebate|incentive|mandate|pause|delay|recall|funding|budget|bill c-|pre-budget|consultation|"
+    r"\btable[sd]?\b|introduc(es|ed|ing) (a |new )?(bill|legislation)|private member|"
     r"rate cut|cuts? (its |key |policy |interest )*rates?|holds? (its |key |policy |interest )*rates?|"
     r"rais(es|ed) (its |key |policy |interest )*rates?|"
     r"(maintains?|holds?) .{0,20}rate|second reading|third reading|report stage|referral to committee|"
@@ -494,11 +517,13 @@ about: HEAL itself; federal health funding (Canada Health Transfer, bilateral de
 health workforce (shortages, national licensure, labour mobility, internationally educated professionals, \
 retention); pharmacare, dental care, drug shortages and drug pricing; the Canada Health Act (private clinics, \
 user fees); health data and digital health; primary care and access; aging, long-term and home care; \
-mental health and substance use; public health; Indigenous health; the health minister, Health Canada, \
+mental health and substance use; public health; Indigenous health; AI in health care (AI scribes and \
+ambient dictation, clinical AI, privacy and rules for health AI), including MP Michael Ma's AI initiatives \
+and the legislation he is expected to lead; the health minister, Health Canada, \
 Parliament's health committees, federal-provincial health ministers, and health bills.
 
 Rate each headline 1-5 for its association:
-5 = a decision or event that changes things now. CADA: tariffs imposed or lifted, a CUSMA deal or \
+5 = a decision or event that changes things now (for HEAL, Michael Ma tabling his AI legislation counts). CADA: tariffs imposed or lifted, a CUSMA deal or \
 breakdown, an EV mandate scrapped or changed, a major Canadian plant closing or moving. HEAL: a federal \
 budget or funding deal, a health bill passing, pharmacare/dental changes, a new health minister. Either: \
 the association itself in a major story.
