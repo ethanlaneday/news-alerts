@@ -67,7 +67,7 @@ ASSOCS = {
     "HEAL": {"emoji": "hospital", "name_re": r"(?i:organizations for health action|health action lobby)|\bHEAL\b"},
 }
 
-CANADA_H = CANADA + r"|provinc|\bfpt\b"   # health news often says "provinces", not "Canada"
+CANADA_H = CANADA + r"|provinc|\bfpt\b|health human resources|\bcihi\b|health workforce canada|camimh"   # health news often says "provinces", not "Canada"
 AI_WORDS = re.compile(
     r"(?i:artificial intelligence|\bai[- ]powered|\bai[- ]scribes?|medical scribes?|\bscribes?\b|ambient|"
     r"dictation|clinical documentation|machine learning|large language models?|\bllms?\b|chatbots?|generative)|"
@@ -127,7 +127,7 @@ TOPICS = [
      "require": [re.compile(r"(?i:organizations for health action|health action lobby)|\bHEAL\b")],
      "queries": ['"Organizations for Health Action"',
                  '"HEAL" coalition health Canada',
-                 "site:healthaction.ca"]},
+                 "site:healthaction.ca"]},  # HEAL's site
     # MP Michael Ma: his AI and health initiatives, including legislation he's expected to lead.
     {"key": "michaelma", "assoc": "HEAL", "label": "Michael Ma", "base": 3,
      "require": [re.compile(r"\bMichael Ma\b"),
@@ -142,6 +142,13 @@ TOPICS = [
                  'Canada ("ambient AI" OR "AI dictation" OR "clinical documentation") doctors',
                  'Canada "artificial intelligence" health care (doctors OR nurses OR hospitals OR patients)',
                  'Canada AI health (legislation OR regulation OR bill OR privacy)']},
+    {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 3,   # HEAL priority 2
+     "require": [CANADA_H, r"mental health|mental illness|addiction|substance use|opioids?|overdose|suicide|psycholog|"
+                           r"psychiatr|\bmhsuh\b|camimh|parity"],
+     "queries": ['"Canada Mental Health Transfer" OR "mental health transfer"',
+                 '"mental health parity" OR "Parity for All Act" OR CAMIMH Canada',
+                 '"mental health" Canada federal (funding OR strategy OR legislation)',
+                 "Canada (opioid OR \"substance use\") federal"]},
     {"key": "healthfunding", "assoc": "HEAL", "label": "Health funding", "base": 3,
      "require": [CANADA_H, HEALTH,
                  r"health transfer|health funding|funding for health|health care funding|health accord|"
@@ -163,31 +170,44 @@ TOPICS = [
     {"key": "workforce", "assoc": "HEAL", "label": "Health workforce", "base": 3,
      "require": [CANADA_H,
                  r"shortage|workforce|human resources|licensure|licensing|recruit|retention|burnout|staffing|"
-                 r"credential|internationally educated|scope of practice|labour mobility|labor mobility",
+                 r"credential|internationally (educated|trained)|scope of practice|labour mobility|labor mobility|"
+                 r"mutual recognition|interprovincial mobility|accreditation|bridging program|health human resources?|"
+                 r"workforce (plan|strategy|data)|health workforce canada|\bcihi\b",
                  r"nurs|physician|doctor|health|paramedic|pharmacist|psycholog|therapist|chiropract|dentist"],
      "queries": ["Canada health workforce shortage",
                  '"national licensure" OR "Health Workforce Canada" OR "health human resources"',
                  "Canada (nurses OR doctors OR physicians) shortage federal",
-                 "Canada health professionals (\"labour mobility\" OR \"credential recognition\")"]},
+                 "Canada health professionals (\"labour mobility\" OR \"credential recognition\")",
+                 '"national health human resources" OR "health workforce plan" Canada',
+                 'Canada "internationally trained" (nurses OR doctors OR health professionals) accreditation',
+                 'Canada health care workers burnout federal']},
     {"key": "healthdata", "assoc": "HEAL", "label": "Health data", "base": 3,
      "require": [CANADA_H, r"health data|health information|interoperab|electronic (health|medical) records?|"
                          r"digital health|virtual care|connected care|health records"],
      "queries": ['"Connected Care" OR "health data" Canada federal',
                  "Canada health records interoperability"]},
+    {"key": "community", "assoc": "HEAL", "label": "Community-based care", "base": 3,   # HEAL priority 3
+     "require": [CANADA_H, r"community[- ]based care|community care|community health cent(re|er)s?|team-based care|"
+                           r"interprofessional|inter-professional|collaborative care|community paramedic|"
+                           r"mobile (health )?clinics?|school-based health|home and community care|"
+                           r"telehealth|telemedicine|remote (patient )?monitoring|children's health|"
+                           r"pa?ediatric|child(ren)?'s mental health|school food|school nutrition"],
+     "queries": ['"community health centres" OR "team-based care" OR "community-based care" Canada',
+                 '"home and community care" OR "community paramedicine" Canada',
+                 'Canada (pediatric OR "children\'s health") federal',
+                 'Canada (telehealth OR "virtual care") federal']},
     {"key": "access", "assoc": "HEAL", "label": "Access to care", "base": 2,
      "require": [CANADA_H, r"family (doctor|physician)s?|primary care|team-based care|wait (times?|lists?)|"
                          r"emergency (room|department)s?|\ber\b closures?|access to care|unattached patients|walk-in"],
      "queries": ["Canada primary care family doctors federal",
                  'Canada health "wait times"']},
-    {"key": "aging", "assoc": "HEAL", "label": "Aging/long-term care", "base": 2,
+    {"key": "aging", "assoc": "HEAL", "label": "Aging/caregiving", "base": 3,   # part of HEAL priority 3
      "require": [CANADA_H, r"long-term care|home care|seniors|aging|ageing|dementia|caregivers?|palliative",
                  HEALTH + r"|care"],
      "queries": ['"long-term care" OR "home care" Canada federal',
-                 "Canada dementia OR caregivers national strategy"]},
-    {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 2,
-     "require": [CANADA_H, r"mental health|mental illness|addiction|substance use|opioids?|overdose|suicide|psycholog"],
-     "queries": ['"mental health" Canada federal (funding OR transfer OR strategy)',
-                 "Canada (opioid OR \"substance use\") federal"]},
+                 "Canada dementia OR caregivers national strategy",
+                 '"palliative care" Canada federal',
+                 '"Canadian Centre for Caregiving Excellence" OR "unpaid caregivers" Canada']},
     {"key": "publichealth", "assoc": "HEAL", "label": "Public health", "base": 2,
      "require": [CANADA_H, r"public health agency|\bphac\b|vaccin|outbreak|measles|pandemic|"
                          r"chief public health officer|immuni[sz]"],
@@ -213,7 +233,16 @@ TOPICS = [
                  '("Canadian Psychological Association" OR "Canadian Physiotherapy Association" OR '
                  '"Canadian Association of Social Workers" OR "Canadian Chiropractic Association") federal',
                  '(HealthCareCAN OR "Alzheimer Society of Canada" OR "Obesity Canada" OR '
-                 '"Canadian Dental Association") federal']},
+                 '"Canadian Dental Association") federal',
+                 '("Pallium Canada" OR "Canadian Association of Community Health Centres" OR '
+                 '"Children\'s Healthcare Canada" OR "Canadian Psychiatric Association")',
+                 '("Canadian Society of Respiratory Therapists" OR "Dietitians of Canada" OR '
+                 '"Speech-Language and Audiology Canada" OR "Canadian Association of Midwives") federal',
+                 '("Canadian Dental Hygienists Association" OR "Canadian Association of Optometrists" OR '
+                 '"Canadian Counselling and Psychotherapy Association" OR "Canadian College of Health Leaders") federal',
+                 '("Association of Faculties of Medicine of Canada" OR "Royal College of Physicians and Surgeons" OR '
+                 '"Canadian Society for Medical Laboratory Science" OR "Canadian Association of Medical Radiation '
+                 'Technologists") federal']},
 ]
 
 # Direct feeds (not searches). Financial Post and Windsor Star block feed readers
@@ -511,9 +540,16 @@ EV tariffs); auto plants in Canada being built, expanded, retooled, idled, close
 federal and provincial EV rules and rebates; vehicle supply, prices, sales, financing, theft and \
 recalls; dealer regulation.
 
-HEAL - Organizations for Health Action, a coalition of about 40 national health organizations \
-(provider associations and health charities) that lobbies the federal government. They want to know fast \
-about: HEAL itself; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
+HEAL - Organizations for Health Action, a coalition of 43 national health organizations \
+(provider associations and health charities) that lobbies the federal government. Its three stated federal \
+priorities (January 2025 consensus document) matter most: (1) the health human resources crisis - a national \
+health workforce plan, workforce data, recruitment and retention, faster accreditation of internationally trained \
+professionals, interprovincial mobility and mutual recognition, health worker burnout; (2) mental health parity - \
+the promised Canada Mental Health Transfer, parity legislation (e.g. CAMIMH's Mental Health and Substance Use \
+Health Parity for All Act), funding for mental health and substance use services; (3) community-based care - \
+team-based and interprofessional care, home and community care, caregivers, palliative care, children's health, \
+virtual care and telehealth, community health centres and paramedicine, Indigenous and underserved communities. \
+They also want to know fast about: HEAL itself or its member organizations; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
 health workforce (shortages, national licensure, labour mobility, internationally educated professionals, \
 retention); pharmacare, dental care, drug shortages and drug pricing; the Canada Health Act (private clinics, \
 user fees); health data and digital health; primary care and access; aging, long-term and home care; \
