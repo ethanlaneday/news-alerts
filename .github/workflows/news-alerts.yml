@@ -1,0 +1,76 @@
+name: News alerts (CADA + HEAL)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub's fastest schedule; runs can start a few minutes late
+  workflow_dispatch:
+    inputs:
+      check_sources:
+        description: "Test every news source and send a health report (changes nothing)"
+        type: boolean
+        default: false
+      send_test:
+        description: "Send one HIGH test alert to your phone (changes nothing)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: cada-alerts
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # to publish news.json to the news-data branch for the news page
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Claude SDK (used only if ANTHROPIC_API_KEY is set)
+        run: pip install --quiet anthropic || echo "anthropic not installed; rules-only scoring"
+      - name: Restore memory of stories already sent
+        uses: actions/cache/restore@v4
+        with:
+          path: .cada-state
+          key: cada-state-${{ github.run_id }}
+          restore-keys: cada-state-
+      - name: Get the news page's data
+        if: github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test
+        run: |
+          mkdir -p news-data
+          git ls-remote --exit-code --heads origin news-data >/dev/null 2>&1 && \
+            git fetch --depth=1 origin news-data && git show FETCH_HEAD:news.json > news-data/news.json || true
+      - name: Check news and notify
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          MIN_LEVEL: ${{ vars.MIN_LEVEL }}
+          CHECK_FEEDS: ${{ inputs.check_sources && '1' || '' }}
+          SEND_TEST: ${{ inputs.send_test && '1' || '' }}
+          NEWS_FILE: ${{ github.ref == 'refs/heads/main' && 'news-data/news.json' || '' }}
+        run: python3 tools/news_alerts.py
+      - name: Save memory
+        if: success() && !inputs.check_sources && !inputs.send_test
+        uses: actions/cache/save@v4
+        with:
+          path: .cada-state
+          key: cada-state-${{ github.run_id }}
+      - name: Publish the news page's data
+        if: success() && github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test
+        run: |
+          [ -f news-data/news.json ] || exit 0
+          cd news-data
+          git init -q -b news-data
+          git config user.name "news-alerts"
+          git config user.email "news-alerts@users.noreply.github.com"
+          git add news.json
+          git commit -q -m "News data $(date -u +%FT%TZ)"
+          # One commit, replaced each run, so the branch never grows.
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" news-data

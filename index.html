@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>News alerts</title>
+<meta name="description" content="CADA and HEAL news, sorted by importance.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="News">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F4F4F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111315" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root {
+  --bg: #F4F4F2; --card: #FFFFFF; --line: #E4E4E0; --text: #101828; --body: #344054; --muted: #5D6B7E;
+  --chip-on-bg: #1D2939; --chip-on-fg: #FFFFFF; --chip-line: #D0D5DD;
+  --crit: #B42318; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
+  --cada-bg: #DBEAFE; --cada-fg: #1E40AF; --heal-bg: #CCFBF1; --heal-fg: #115E59;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111315; --card: #1A1D21; --line: #2A2F35; --text: #F2F4F7; --body: #D0D5DD; --muted: #98A2B3;
+    --chip-on-bg: #F2F4F7; --chip-on-fg: #111315; --chip-line: #3A4049;
+    --crit: #F97066; --high: #FDB022; --note: #B9C0CB; --fyi: #98A2B3; --unread: #60A5FA;
+    --cada-bg: #1E3A8A; --cada-fg: #DBEAFE; --heal-bg: #134E4A; --heal-fg: #CCFBF1;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 760px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 32px); }
+header { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.meta { margin: 0; font-size: 13px; color: var(--muted); }
+.meta strong { color: var(--text); }
+.refresh { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--chip-line);
+  background: var(--card); color: var(--body); display: grid; place-items: center; cursor: pointer; }
+.refresh svg { width: 20px; height: 20px; }
+.refresh.spin svg { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--chip-line);
+  background: var(--card); color: var(--body); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--chip-on-bg); border-color: var(--chip-on-bg); color: var(--chip-on-fg); font-weight: 600; }
+.brief { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; }
+.brief h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; color: var(--muted); }
+.brief p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: var(--body); }
+.tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.tag.CADA { background: var(--cada-bg); color: var(--cada-fg); }
+.tag.HEAL { background: var(--heal-bg); color: var(--heal-fg); }
+section.level { margin-bottom: 20px; }
+.lvl-head { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
+.lvl-head .dot { width: 10px; height: 10px; border-radius: 999px; }
+.lvl-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+.lvl-head .count { font-size: 12px; color: var(--muted); }
+.cards { display: flex; flex-direction: column; gap: 8px; }
+article { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px; }
+.info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.headline { display: flex; gap: 8px; align-items: flex-start; }
+.headline .new { flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 999px; background: var(--unread); }
+.headline a { font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); text-decoration: none; }
+.headline a:hover, .headline a:focus-visible { text-decoration: underline; }
+.summary { margin: 0; font-size: 14px; line-height: 1.45; color: var(--body); }
+.why { margin: 0; font-size: 13px; line-height: 1.4; color: var(--body); }
+.signals { margin: 0; font-size: 12px; color: var(--muted); }
+.more { width: 100%; min-height: 44px; border: 1px dashed var(--chip-line); border-radius: 12px; background: transparent;
+  color: var(--body); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; }
+.empty, .error { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 12px; }
+.foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="top">
+      <h1>News</h1>
+      <button class="refresh" id="refresh" type="button" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+    </div>
+    <p class="meta" id="meta">Loading…</p>
+    <div class="row" role="group" aria-label="Association" id="assocChips"></div>
+    <div class="row" role="group" aria-label="Time range" id="rangeChips"></div>
+  </header>
+  <div id="brief"></div>
+  <main id="list" aria-live="polite"></main>
+  <p class="foot">Sorted by importance, newest first · alerts for important stories still go to your phone</p>
+</div>
+<script>
+(function () {
+  "use strict";
+  var DATA_URL = "https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/news.json";
+  var LEVELS = [
+    { n: 5, label: "CRITICAL", color: "var(--crit)" },
+    { n: 4, label: "HIGH", color: "var(--high)" },
+    { n: 3, label: "NOTABLE", color: "var(--note)" },
+    { n: 2, label: "FYI", color: "var(--fyi)" }
+  ];
+
+  // Per-device preferences and "last look" time. Storage can be unavailable; the page works without it.
+  function load(key, fallback) { try { var v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; } }
+  function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+
+  var state = {
+    data: null,
+    assoc: load("news.assoc", "all"),
+    range: load("news.range", "day"),
+    showFyi: false,
+    lastLook: load("news.lastLook", 0)   // seconds; stories seen after this are "new"
+  };
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") node.textContent = attrs[k];
+      else if (k === "class") node.className = attrs[k];
+      else if (k === "style") node.setAttribute("style", attrs[k]);
+      else if (k.slice(0, 2) === "on") node.addEventListener(k.slice(2), attrs[k]);
+      else node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+  function safeLink(url) { return /^https?:\/\//i.test(url || "") ? url : null; }
+  function ago(sec) {
+    var m = Math.max(0, Math.round((Date.now() / 1000 - sec) / 60));
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    var h = Math.round(m / 60);
+    if (h < 24) return h + " h ago";
+    return Math.round(h / 24) + " d ago";
+  }
+
+  function chips(container, options, current, onPick) {
+    container.textContent = "";
+    options.forEach(function (o) {
+      container.appendChild(el("button", {
+        type: "button", class: "chip", "aria-pressed": String(o.key === current),
+        text: o.label + (o.count !== undefined ? " · " + o.count : ""),
+        onclick: function () { onPick(o.key); }
+      }));
+    });
+  }
+
+  function render() {
+    var d = state.data;
+    var meta = document.getElementById("meta");
+    var list = document.getElementById("list");
+    var briefBox = document.getElementById("brief");
+    list.textContent = ""; briefBox.textContent = "";
+    if (!d) return;
+
+    var now = Date.now() / 1000;
+    var span = state.range === "day" ? 86400 : 7 * 86400;
+    var inRange = d.items.filter(function (i) { return now - i.seen < span; });
+    var shown = inRange.filter(function (i) { return state.assoc === "all" || i.assoc === state.assoc; });
+    var fresh = shown.filter(function (i) { return i.seen > state.lastLook && i.level >= 3; }).length;
+
+    meta.textContent = "";
+    meta.appendChild(el("strong", { text: fresh + " new" }));
+    meta.appendChild(document.createTextNode(" since your last look · updated " + (d.checked ? ago(d.checked) : "—")));
+
+    function count(a) { return inRange.filter(function (i) { return a === "all" || i.assoc === a; }).length; }
+    chips(document.getElementById("assocChips"),
+      [{ key: "all", label: "All", count: count("all") }, { key: "CADA", label: "CADA", count: count("CADA") }, { key: "HEAL", label: "HEAL", count: count("HEAL") }],
+      state.assoc, function (k) { state.assoc = k; save("news.assoc", k); render(); });
+    chips(document.getElementById("rangeChips"),
+      [{ key: "day", label: "Last 24 hours" }, { key: "week", label: "This week" }],
+      state.range, function (k) { state.range = k; save("news.range", k); render(); });
+
+    if (d.brief && (d.brief.CADA || d.brief.HEAL)) {
+      var b = el("section", { class: "brief", "aria-label": "Today in brief" }, [el("h2", { text: "TODAY IN BRIEF · " + ago(d.brief.at) })]);
+      ["CADA", "HEAL"].forEach(function (a) {
+        if ((state.assoc === "all" || state.assoc === a) && d.brief[a]) {
+          b.appendChild(el("p", null, [el("span", { class: "tag " + a, text: a }), document.createTextNode(" " + d.brief[a])]));
+        }
+      });
+      briefBox.appendChild(b);
+    }
+
+    if (!shown.length) {
+      list.appendChild(el("p", { class: "empty", text: "Nothing yet for this view. New stories appear here as the alerts find them." }));
+      return;
+    }
+
+    LEVELS.forEach(function (L) {
+      var items = shown.filter(function (i) { return i.level === L.n; })
+        .sort(function (a, b) { return b.seen - a.seen || b.published - a.published; });
+      if (!items.length) return;
+      var sec = el("section", { class: "level", "aria-label": L.label }, [
+        el("div", { class: "lvl-head" }, [
+          el("span", { class: "dot", style: "background:" + L.color, "aria-hidden": "true" }),
+          el("h2", { text: L.label, style: "color:" + L.color }),
+          el("span", { class: "count", text: String(items.length) })
+        ])
+      ]);
+      if (L.n === 2 && !state.showFyi) {
+        sec.appendChild(el("button", { type: "button", class: "more", text: "Show " + items.length + " quieter stories",
+          onclick: function () { state.showFyi = true; render(); } }));
+        list.appendChild(sec);
+        return;
+      }
+      var cards = el("div", { class: "cards" });
+      items.forEach(function (i) {
+        var link = safeLink(i.link);
+        var title = link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", text: i.title }) : el("span", { text: i.title });
+        var isNew = i.seen > state.lastLook;
+        var info = [i.topic !== i.assoc ? i.topic : null, i.source, ago(i.published)].filter(Boolean).join(" · ");
+        cards.appendChild(el("article", null, [
+          el("div", { class: "info" }, [el("span", { class: "tag " + i.assoc, text: i.assoc }), el("span", { text: info })]),
+          el("div", { class: "headline" }, [isNew ? el("span", { class: "new", role: "img", "aria-label": "New" }) : null, title]),
+          i.summary ? el("p", { class: "summary", text: i.summary }) : null,
+          i.why ? el("p", { class: "why" }, [el("strong", { text: "Why it matters: " }), document.createTextNode(i.why)]) : null,
+          !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null
+        ]));
+      });
+      sec.appendChild(cards);
+      if (L.n === 2) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
+        onclick: function () { state.showFyi = false; render(); } }));
+      list.appendChild(sec);
+    });
+  }
+
+  var loading = false;
+  function refresh() {
+    if (loading) return;
+    loading = true;
+    var btn = document.getElementById("refresh");
+    btn.classList.add("spin");
+    fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) {
+        d.items = Array.isArray(d.items) ? d.items : [];
+        state.data = d; render();
+      })
+      .catch(function () {
+        if (!state.data) {
+          var list = document.getElementById("list"); list.textContent = "";
+          list.appendChild(el("p", { class: "error", text: "Couldn't load the news right now. Check your connection and tap refresh." }));
+          document.getElementById("meta").textContent = "Not updated";
+        }
+      })
+      .then(function () { loading = false; btn.classList.remove("spin"); });
+  }
+
+  // Leaving the page counts as "looked": next time, only newer stories are marked new.
+  function markLooked() { save("news.lastLook", Date.now() / 1000); }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") markLooked();
+    else { state.lastLook = load("news.lastLook", 0); refresh(); }
+  });
+  window.addEventListener("pagehide", markLooked);
+  document.getElementById("refresh").addEventListener("click", refresh);
+  setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
+  refresh();
+})();
+</script>
+</body>
+</html>
