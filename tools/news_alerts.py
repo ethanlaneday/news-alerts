@@ -43,9 +43,13 @@ from datetime import datetime
 #   queries: searches run on Google News and Bing News
 #   base:    starting importance level for this topic (1-5)
 # ---------------------------------------------------------------------------
-CANADA = r"canad|ontario|quebec|québec|ottawa|carney|leblanc|champagne|joly|doug ford|" \
-         r"windsor|oshawa|brampton|oakville|alliston|woodstock|cambridge|ingersoll|st\. thomas|" \
-         r"toronto|montreal|vancouver|alberta|b\.c\.|british columbia|cusma|unifor"
+CANADA = (r"canad|ontario|quebec|québec|ottawa|carney|leblanc|champagne|joly|doug ford|"
+          r"windsor|oshawa|brampton|oakville|alliston|woodstock|cambridge|ingersoll|st\. thomas|"
+          r"toronto|montreal|vancouver|alberta|b\.c\.|british columbia|cusma|unifor|"
+          r"nova scotia|new brunswick|manitoba|saskatchewan|newfoundland|labrador|prince edward island|\bp\.e\.i\.|"
+          r"yukon|nunavut|northwest territories|atlantic canada|maritimes|calgary|edmonton|winnipeg|regina|"
+          r"saskatoon|halifax|fredericton|moncton|charlottetown|st\. john's|mississauga|markham|kitchener|"
+          r"(?<=, )(ont|que|alta|sask|man|n\.s|n\.b|nfld|b\.c)\.")   # dateline style: "Winnipeg, Man."
 AUTO = r"\bauto|automo|vehicle|\bcars?\b|\bev\b|\bevs\b|electric vehicle|dealer|dealership|" \
        r"stellantis|chrysler|jeep|\bgm\b|general motors|ford motor|ford's|honda|toyota|hyundai|" \
        r"volkswagen|\bvw\b|tesla|nissan|kia|byd|battery|steel|aluminum|\bford\b(?! government)|unifor|automaker"
@@ -63,6 +67,11 @@ ASSOCS = {
     "HEAL": {"emoji": "hospital", "name_re": r"(?i:organizations for health action|health action lobby)|\bHEAL\b"},
 }
 
+CANADA_H = CANADA + r"|provinc|\bfpt\b|health human resources|\bcihi\b|health workforce canada|camimh"   # health news often says "provinces", not "Canada"
+AI_WORDS = re.compile(
+    r"(?i:artificial intelligence|\bai[- ]powered|\bai[- ]scribes?|medical scribes?|\bscribes?\b|ambient|"
+    r"dictation|clinical documentation|machine learning|large language models?|\bllms?\b|chatbots?|generative)|"
+    r"\bAI\b")
 HEALTH = r"health|hospital|nurs|physician|doctor|pharma|drug|dental|mental health|long-term care|" \
          r"care home|patient|medic|wait time|primary care|paramedic|psycholog|therap|chiropract"
 
@@ -86,7 +95,7 @@ TOPICS = [
     {"key": "plants", "assoc": "CADA", "label": "Plants", "base": 3,
      "require": [CANADA, AUTO_CORE,
                  r"plant|factory|assembly|production|retool|shift|layoff|laid off|jobs|workers|invest|"
-                 r"battery|gigafactory|clos|shut|moving|relocat|sold|sale of|buy|acquir|strike|unifor|idle"],
+                 r"battery|gigafactory|clos|shut|moving|relocat|sold|sale of|\bbuy(s|ing)?\b|buyout|acquir|strike|unifor|idle"],
      "queries": ["Canada (auto OR assembly OR EV OR battery) plant",
                  "Ontario auto plant",
                  "(Stellantis Brampton) OR (Stellantis Windsor) OR (CAMI Ingersoll) OR (GM Oshawa)",
@@ -114,43 +123,129 @@ TOPICS = [
                  r"new motor vehicle sales"],
      "queries": ['"Bank of Canada" (rate OR rates) decision']},
     # ---- HEAL: Organizations for Health Action ----
+    # HEAL follows federal health policy broadly. Terms from its January 2025 consensus document
+    # (health human resources, mental health parity, community-based care) widen these topics as an
+    # extra net; they don't make those areas more important than the rest.
     {"key": "heal", "assoc": "HEAL", "label": "HEAL", "base": 3,
      "require": [re.compile(r"(?i:organizations for health action|health action lobby)|\bHEAL\b")],
      "queries": ['"Organizations for Health Action"',
                  '"HEAL" coalition health Canada',
-                 "site:healthaction.ca"]},
+                 "site:healthaction.ca"]},  # HEAL's site
+    # MP Michael Ma: his AI and health initiatives, including legislation he's expected to lead.
+    {"key": "michaelma", "assoc": "HEAL", "label": "Michael Ma", "base": 3,
+     "require": [re.compile(r"\bMichael Ma\b"),
+                 re.compile(r"(?i:bill|legislation|motion|petition|artificial intelligence|health|committee|tabled|"
+                            r"introduc|private member|scribe|technology|digital)|\bAI\b")],
+     "queries": ['"Michael Ma" MP',
+                 '"Michael Ma" (AI OR "artificial intelligence" OR bill OR health)']},
+    # AI in health care: AI scribes / ambient dictation, clinical AI, and rules for AI in health.
+    {"key": "aihealth", "assoc": "HEAL", "label": "AI in health", "base": 3,
+     "require": [CANADA_H, AI_WORDS, HEALTH + r"|clinic|legislation|\bbill\b|regulat"],
+     "queries": ['"AI scribe" OR "AI scribes" Canada',
+                 'Canada ("ambient AI" OR "AI dictation" OR "clinical documentation") doctors',
+                 'Canada "artificial intelligence" health care (doctors OR nurses OR hospitals OR patients)',
+                 'Canada AI health (legislation OR regulation OR bill OR privacy)']},
+    {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 3,
+     "require": [CANADA_H, r"mental health|mental illness|addiction|substance use|opioids?|overdose|suicide|psycholog|"
+                           r"psychiatr|\bmhsuh\b|camimh|parity"],
+     "queries": ['"Canada Mental Health Transfer" OR "mental health transfer"',
+                 '"mental health parity" OR "Parity for All Act" OR CAMIMH Canada',
+                 '"mental health" Canada federal (funding OR strategy OR legislation)',
+                 "Canada (opioid OR \"substance use\") federal"]},
     {"key": "healthfunding", "assoc": "HEAL", "label": "Health funding", "base": 3,
-     "require": [CANADA, HEALTH,
+     "require": [CANADA_H, HEALTH,
                  r"health transfer|health funding|funding for health|health care funding|health accord|"
-                 r"bilateral|budget|billion|fiscal|transfer payment"],
+                 r"bilateral|budget|billion|fiscal|transfer payment|canada health act|user fees?|extra.billing|"
+                 r"private clinics?|economic statement|pre-budget"],
      "queries": ['"Canada Health Transfer" OR "health transfer"',
                  "federal health funding provinces Canada",
-                 "federal budget health care Canada"]},
+                 "federal budget health care Canada",
+                 '"Canada Health Act" (private OR clinics OR deductions OR "user fees")',
+                 '("pre-budget consultations" OR "fall economic statement") health']},
+    {"key": "pharmacare", "assoc": "HEAL", "label": "Pharmacare/drugs", "base": 3,
+     "require": [CANADA_H + r"|pharmacare", r"pharmacare|dental care|dental plan|drug coverage|prescription drug|formulary|"
+                         r"drug plan|medication coverage|drug shortages?|shortage of .{0,30}(drug|medication)|"
+                         r"canada's drug agency|cda-amc|pmprb|drug pric|rare disease|biosimilar"],
+     "queries": ["pharmacare Canada",
+                 '"Canadian Dental Care Plan" OR "national dental care"',
+                 'Canada ("drug shortage" OR "drug shortages")',
+                 '"Canada\'s Drug Agency" OR PMPRB OR "rare disease strategy"']},
     {"key": "workforce", "assoc": "HEAL", "label": "Health workforce", "base": 3,
-     "require": [CANADA,
+     "require": [CANADA_H,
                  r"shortage|workforce|human resources|licensure|licensing|recruit|retention|burnout|staffing|"
-                 r"credential|internationally educated|scope of practice",
+                 r"credential|internationally (educated|trained)|scope of practice|labour mobility|labor mobility|"
+                 r"mutual recognition|interprovincial mobility|accreditation|bridging program|health human resources?|"
+                 r"workforce (plan|strategy|data)|health workforce canada|\bcihi\b",
                  r"nurs|physician|doctor|health|paramedic|pharmacist|psycholog|therapist|chiropract|dentist"],
      "queries": ["Canada health workforce shortage",
                  '"national licensure" OR "Health Workforce Canada" OR "health human resources"',
-                 "Canada (nurses OR doctors OR physicians) shortage federal"]},
-    {"key": "pharmacare", "assoc": "HEAL", "label": "Pharmacare/dental", "base": 3,
-     "require": [CANADA + r"|pharmacare", r"pharmacare|dental care|dental plan|drug coverage|prescription drug|formulary|"
-                         r"drug plan|medication coverage"],
-     "queries": ["pharmacare Canada",
-                 '"Canadian Dental Care Plan" OR "national dental care"']},
+                 "Canada (nurses OR doctors OR physicians) shortage federal",
+                 "Canada health professionals (\"labour mobility\" OR \"credential recognition\")",
+                 '"national health human resources" OR "health workforce plan" Canada',
+                 'Canada "internationally trained" (nurses OR doctors OR health professionals) accreditation',
+                 'Canada health care workers burnout federal']},
+    {"key": "healthdata", "assoc": "HEAL", "label": "Health data", "base": 3,
+     "require": [CANADA_H, r"health data|health information|interoperab|electronic (health|medical) records?|"
+                         r"digital health|virtual care|connected care|health records"],
+     "queries": ['"Connected Care" OR "health data" Canada federal',
+                 "Canada health records interoperability"]},
+    {"key": "community", "assoc": "HEAL", "label": "Community-based care", "base": 2,
+     "require": [CANADA_H, r"community[- ]based care|community care|community health cent(re|er)s?|team-based care|"
+                           r"interprofessional|inter-professional|collaborative care|community paramedic|"
+                           r"mobile (health )?clinics?|school-based health|home and community care|"
+                           r"telehealth|telemedicine|remote (patient )?monitoring|children's health|"
+                           r"pa?ediatric|child(ren)?'s mental health|school food|school nutrition"],
+     "queries": ['"community health centres" OR "team-based care" OR "community-based care" Canada',
+                 '"home and community care" OR "community paramedicine" Canada',
+                 'Canada (pediatric OR "children\'s health") federal',
+                 'Canada (telehealth OR "virtual care") federal']},
+    {"key": "access", "assoc": "HEAL", "label": "Access to care", "base": 2,
+     "require": [CANADA_H, r"family (doctor|physician)s?|primary care|team-based care|wait (times?|lists?)|"
+                         r"emergency (room|department)s?|\ber\b closures?|access to care|unattached patients|walk-in"],
+     "queries": ["Canada primary care family doctors federal",
+                 'Canada health "wait times"']},
+    {"key": "aging", "assoc": "HEAL", "label": "Aging/caregiving", "base": 2,
+     "require": [CANADA_H, r"long-term care|home care|seniors|aging|ageing|dementia|caregivers?|palliative",
+                 HEALTH + r"|care"],
+     "queries": ['"long-term care" OR "home care" Canada federal',
+                 "Canada dementia OR caregivers national strategy",
+                 '"palliative care" Canada federal',
+                 '"Canadian Centre for Caregiving Excellence" OR "unpaid caregivers" Canada']},
+    {"key": "publichealth", "assoc": "HEAL", "label": "Public health", "base": 2,
+     "require": [CANADA_H, r"public health agency|\bphac\b|vaccin|outbreak|measles|pandemic|"
+                         r"chief public health officer|immuni[sz]"],
+     "queries": ['"Public Health Agency of Canada" OR "chief public health officer"',
+                 "Canada (measles OR outbreak OR vaccine) federal"]},
+    {"key": "indigenoushealth", "assoc": "HEAL", "label": "Indigenous health", "base": 2,
+     "require": [CANADA_H, r"indigenous|first nations|inuit|métis|metis|jordan's principle", HEALTH],
+     "queries": ['"Indigenous health" Canada federal']},
     {"key": "healthpolicy", "assoc": "HEAL", "label": "Health policy", "base": 2,
-     "require": [CANADA, HEALTH,
-                 r"health canada|health minister|minister of health|federal|ottawa|parliament|commons|senate|"
-                 r"committee|bill c-|legislation|national strategy|standards"],
+     "require": [CANADA_H, HEALTH,
+                 r"health canada|health minister|minister of health|federal|parliament|commons|senate|"
+                 r"committee|bill c-|legislation|national strategy|standards|health ministers|fpt"],
      "queries": ['"health minister" Canada federal',
                  '"Health Canada" announces',
                  "Canada mental health federal funding",
                  "long-term care national standards Canada",
                  "House of Commons health committee HESA",
                  "site:healthydebate.ca",  # its feed blocks readers, so search it instead
-                 # Statements from HEAL's best-known member organizations
-                 '("Canadian Medical Association" OR "Canadian Nurses Association" OR "Canadian Pharmacists Association") federal']},
+                 "Senate social affairs committee health",
+                 "federal provincial territorial health ministers meeting",
+                 # Statements from HEAL members and allied national health organizations
+                 '("Canadian Medical Association" OR "Canadian Nurses Association" OR "Canadian Pharmacists Association") federal',
+                 '("Canadian Psychological Association" OR "Canadian Physiotherapy Association" OR '
+                 '"Canadian Association of Social Workers" OR "Canadian Chiropractic Association") federal',
+                 '(HealthCareCAN OR "Alzheimer Society of Canada" OR "Obesity Canada" OR '
+                 '"Canadian Dental Association") federal',
+                 '("Pallium Canada" OR "Canadian Association of Community Health Centres" OR '
+                 '"Children\'s Healthcare Canada" OR "Canadian Psychiatric Association")',
+                 '("Canadian Society of Respiratory Therapists" OR "Dietitians of Canada" OR '
+                 '"Speech-Language and Audiology Canada" OR "Canadian Association of Midwives") federal',
+                 '("Canadian Dental Hygienists Association" OR "Canadian Association of Optometrists" OR '
+                 '"Canadian Counselling and Psychotherapy Association" OR "Canadian College of Health Leaders") federal',
+                 '("Association of Faculties of Medicine of Canada" OR "Royal College of Physicians and Surgeons" OR '
+                 '"Canadian Society for Medical Laboratory Science" OR "Canadian Association of Medical Radiation '
+                 'Technologists") federal']},
 ]
 
 # Direct feeds (not searches). Financial Post and Windsor Star block feed readers
@@ -167,7 +262,12 @@ FEEDS = [
     {"id": "cad-magazine", "name": "Canadian Auto Dealer", "url": "https://canadianautodealer.ca/feed/"},
     {"id": "electric-autonomy", "name": "Electric Autonomy Canada", "url": "https://electricautonomy.ca/feed/"},
     # Health (HEAL)
-    {"id": "cbc-health", "name": "CBC News", "title_only": True, "url": "https://www.cbc.ca/webfeed/rss/rss-health"},
+    {"id": "cbc-health", "name": "CBC News", "title_only": True, "context": "Canada",
+     "url": "https://www.cbc.ca/webfeed/rss/rss-health"},
+    {"id": "global-health", "name": "Global News", "title_only": True, "url": "https://globalnews.ca/health/feed/"},
+    {"id": "hospital-news", "name": "Hospital News", "context": "Canada", "url": "https://hospitalnews.com/feed/"},
+    {"id": "conversation-health", "name": "The Conversation Canada", "title_only": True,
+     "url": "https://theconversation.com/ca/health/articles.atom"},
     {"id": "policy-options", "name": "Policy Options", "title_only": True, "url": "https://policyoptions.irpp.org/feed/"},
     # Ottawa / Parliament Hill
     {"id": "cbc-politics", "title_only": True, "name": "CBC News", "url": "https://www.cbc.ca/webfeed/rss/rss-politics"},
@@ -188,6 +288,7 @@ FEEDS = [
      "context": "Canada", "url": "https://www.bankofcanada.ca/content_type/press-releases/feed/"},
     # (CADA and HEAL have no working news feeds; their sites are searched via Google instead.)
     {"id": "gc-news", "title_only": True, "name": "Government of Canada", "official": True,
+     "context": "Canada federal",
      "url": "https://api.io.canada.ca/io-server/gc/news/en/v2?sort=publishedDate&orderBy=desc&pick=100&format=atom"},
 ]
 # Ottawa outlets searched via Google News (works even when an outlet has no
@@ -217,10 +318,11 @@ MINOR = re.compile(  # +1: notable developments
     r"talks|negotiat|deadline|review|retaliat|countermeasure|exempt|remission|quota|"
     r"layoff|lay off|laid off|job cuts|shift|idl(e|ed|ing)|invest|billion|new plant|retool|"
     r"rebate|incentive|mandate|pause|delay|recall|funding|budget|bill c-|pre-budget|consultation|"
+    r"\btable[sd]?\b|introduc(es|ed|ing) (a |new )?(bill|legislation)|private member|"
     r"rate cut|cuts? (its |key |policy |interest )*rates?|holds? (its |key |policy |interest )*rates?|"
     r"rais(es|ed) (its |key |policy |interest )*rates?|"
     r"(maintains?|holds?) .{0,20}rate|second reading|third reading|report stage|referral to committee|"
-    r"shortage|wait times?|licensure|pharmacare|dental care|cyber|outage|sold|sell|acquir|record|plunge|surge|warn", re.I)
+    r"shortage|wait times?|licensure|pharmacare|dental care|outbreak|national strategy|private clinics?|cyber|outage|sold|sell|acquir|record|plunge|surge|warn", re.I)
 SOFT = re.compile(   # -1: opinion and features rarely need a buzz
     r"^opinion|opinion:|column|analysis:|explainer|what to know|what you need|how to|podcast|"
     r"^watch|video:|quiz|\bbest\b|road test|first drive|^review:|\?$|"
@@ -242,7 +344,7 @@ TRUSTED_SOURCES = re.compile(
     r"windsorite|government of canada|canada\.ca|unifor|\bcada\b|canadian automobile dealers|"
     r"business in vancouver|toronto sun|winnipeg free press|halifax|chronicle herald|times colonist|"
     r"the canadian|canadian business|investing\.com|marketwatch|axios|the hill$|white house|"
-    r"healthy debate|policy options|cmaj|canadian healthcare network|hospital news|medical post|"
+    r"healthy debate|policy options|cmaj|hospital news|the conversation|canadian healthcare network|hospital news|medical post|"
     r"canadian medical association|nursing|healthing|health canada|cihi|statistics canada", re.I)
 
 BLOCKED_SOURCES = re.compile(r"openpr|ein presswire|marketscreener|benzinga|globe newswire|"
@@ -441,15 +543,25 @@ EV tariffs); auto plants in Canada being built, expanded, retooled, idled, close
 federal and provincial EV rules and rebates; vehicle supply, prices, sales, financing, theft and \
 recalls; dealer regulation.
 
-HEAL - Organizations for Health Action, a coalition of about 40 national health organizations \
-(provider associations and health charities) that lobbies the federal government. They want to know fast \
-about: HEAL itself; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
-health workforce (shortages, national licensure, internationally educated professionals, retention); \
-pharmacare and dental care; the health minister, Health Canada, Parliament's health committee and health \
-bills; mental health, long-term care and other national health standards.
+HEAL - Organizations for Health Action, a coalition of 43 national health organizations \
+(provider associations and health charities) that lobbies the federal government. They care about federal \
+health policy broadly. As an extra signal (not the full picture, and somewhat dated), HEAL's January 2025 \
+consensus document highlighted: the health human resources crisis (workforce plan and data, accreditation of \
+internationally trained professionals, interprovincial mobility, burnout); mental health parity (the promised \
+Canada Mental Health Transfer, parity legislation); and community-based care (team-based care, home and \
+community care, caregivers, palliative care, children's health, virtual care). Treat stories on those as \
+relevant, but never rate a story lower because it falls outside them. \
+They want to know fast about: HEAL itself or its member organizations; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
+health workforce (shortages, national licensure, labour mobility, internationally educated professionals, \
+retention); pharmacare, dental care, drug shortages and drug pricing; the Canada Health Act (private clinics, \
+user fees); health data and digital health; primary care and access; aging, long-term and home care; \
+mental health and substance use; public health; Indigenous health; AI in health care (AI scribes and \
+ambient dictation, clinical AI, privacy and rules for health AI), including MP Michael Ma's AI initiatives \
+and the legislation he is expected to lead; the health minister, Health Canada, \
+Parliament's health committees, federal-provincial health ministers, and health bills.
 
 Rate each headline 1-5 for its association:
-5 = a decision or event that changes things now. CADA: tariffs imposed or lifted, a CUSMA deal or \
+5 = a decision or event that changes things now (for HEAL, Michael Ma tabling his AI legislation counts). CADA: tariffs imposed or lifted, a CUSMA deal or \
 breakdown, an EV mandate scrapped or changed, a major Canadian plant closing or moving. HEAL: a federal \
 budget or funding deal, a health bill passing, pharmacare/dental changes, a new health minister. Either: \
 the association itself in a major story.
@@ -761,7 +873,7 @@ def check_feeds(server, topic, feed_override):
             ai = f"working ({model}) - sample rated {sample['level']}: {sample.get('summary', '')[:120]}"
         else:
             ai = f"key set but the test call failed ({model}) - see the run log"
-    send(server, topic, "News alerts: source check", msg + f"\nClaude scoring: {ai}", priority=3, tags=["mag"])
+    send(server, topic, "News alerts: source check", msg + f"\nClaude scoring: {ai}", priority=2, tags=["mag"])  # quiet: no sound or banner
     return 0
 
 
