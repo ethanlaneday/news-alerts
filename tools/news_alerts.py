@@ -873,7 +873,7 @@ def check_feeds(server, topic, feed_override):
             ai = f"working ({model}) - sample rated {sample['level']}: {sample.get('summary', '')[:120]}"
         else:
             ai = f"key set but the test call failed ({model}) - see the run log"
-    send(server, topic, "News alerts: source check", msg + f"\nClaude scoring: {ai}", priority=3, tags=["mag"])
+    send(server, topic, "News alerts: source check", msg + f"\nClaude scoring: {ai}", priority=2, tags=["mag"])  # quiet: no sound or banner
     return 0
 
 
