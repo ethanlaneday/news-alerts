@@ -796,6 +796,82 @@ def update_news(path, cands, threshold_for_page, now):
     print(f"news page: +{added} stories, {len(news['items'])} kept")
 
 
+def backfill(server, topic, feed_override):
+    """Fill the news page with recent stories (default: last 72 h) without sending any alerts.
+    Used once after the page went live, since earlier stories were only recorded, not kept."""
+    path = os.environ.get("NEWS_FILE", "").strip()
+    if not path:
+        print("backfill needs NEWS_FILE (runs on main only)", file=sys.stderr)
+        return 1
+    hours = float(os.environ.get("BACKFILL_HOURS") or 72)
+    now = time.time()
+    found, titles = [], set()
+    for src, items, err in read_all(feed_override):
+        if err:
+            print(f"[{src['id']}] failed: {err}", file=sys.stderr)
+            continue
+        for it in items:
+            t = classify(it)
+            if not t or (it["source"] and BLOCKED_SOURCES.search(it["source"])):
+                continue
+            if not (now - hours * 3600 <= it["ts"] <= now + 3600):
+                continue
+            key = norm_title(it["title"])
+            if key in titles:
+                continue
+            titles.add(key)
+            it["topic"] = t
+            found.append(it)
+    for it in found:
+        it["level"], it["why"] = rule_score(it)
+        if not it.get("official") and not TRUSTED_SOURCES.search(it["source"] or ""):
+            it["untrusted"] = True
+            it["level"] = max(1, it["level"] - 1)
+            it["why"] += ", unfamiliar outlet"
+    found.sort(key=lambda i: (-i["level"], bool(i.get("untrusted")), -i["ts"]))
+    kept, cands = [], []
+    for it in found:  # one story per event, the best-rated version first
+        w = story_words(it)
+        if not it.get("track_changes") and any(similar(w, prev) >= SIMILARITY for prev in kept):
+            continue
+        kept.append(w)
+        cands.append(it)
+    cands = cands[:240]
+    for i in range(0, len(cands), 40):  # Claude rates and summarises in batches
+        batch = cands[i:i + 40]
+        if ai_score(batch):
+            for it in batch:
+                if it.get("by_ai") and it.get("untrusted"):
+                    it["level"] = max(1, it["level"] - 1)
+    news = load_news(path)
+    have = {i["id"] for i in news["items"]}
+    added = 0
+    for it in cands:
+        if it["level"] < max(2, 3 if it.get("untrusted") else 1):
+            continue
+        rec = story_record(it, now)
+        rec["seen"] = int(min(now, it["ts"]))  # place it on the page when it was published
+        if rec["id"] not in have:
+            news["items"].append(rec)
+            have.add(rec["id"])
+            added += 1
+    news["items"] = sorted((i for i in news["items"] if now - i["seen"] < NEWS_KEEP_DAYS * 86400),
+                           key=lambda i: -i["seen"])[:1500]
+    b = write_brief(news["items"], now)
+    if b:
+        news["brief"] = b
+    news["checked"] = int(now)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(news, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(path + ".tmp", path)
+    print(f"backfill: {len(found)} relevant, {len(cands)} distinct, +{added} added to the page")
+    send(server, topic, "News page updated",
+         f"Added {added} stories from the last {int(hours)} hours to the news page. No alerts were sent for them.",
+         click="https://ethanlaneday.github.io/news-alerts/", priority=2, tags=["newspaper"])
+    return 0
+
+
 def save_state(path: str, state: dict):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
@@ -894,6 +970,8 @@ def main() -> int:
                  click="https://ethanlaneday.github.io/news-alerts/", priority=4,
                  tags=[ASSOCS[assoc]["emoji"], "red_circle"])
         return 0
+    if os.environ.get("BACKFILL") == "1":
+        return backfill(server, topic, feed_override)
     if os.environ.get("CHECK_FEEDS") == "1":
         return check_feeds(server, topic, feed_override)
 

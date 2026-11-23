@@ -9,6 +9,10 @@ on:
         description: "Test every news source and send a health report (changes nothing)"
         type: boolean
         default: false
+      backfill:
+        description: "Fill the news page with the last 3 days of stories (sends no alerts)"
+        type: boolean
+        default: false
       send_test:
         description: "Send one HIGH test alert to your phone (changes nothing)"
         type: boolean
@@ -54,10 +58,11 @@ jobs:
           MIN_LEVEL: ${{ vars.MIN_LEVEL }}
           CHECK_FEEDS: ${{ inputs.check_sources && '1' || '' }}
           SEND_TEST: ${{ inputs.send_test && '1' || '' }}
+          BACKFILL: ${{ inputs.backfill && '1' || '' }}
           NEWS_FILE: ${{ github.ref == 'refs/heads/main' && 'news-data/news.json' || '' }}
         run: python3 tools/news_alerts.py
       - name: Save memory
-        if: success() && !inputs.check_sources && !inputs.send_test
+        if: success() && !inputs.check_sources && !inputs.send_test && !inputs.backfill
         uses: actions/cache/save@v4
         with:
           path: .cada-state
