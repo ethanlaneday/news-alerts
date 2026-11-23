@@ -97,7 +97,13 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
 <script>
 (function () {
   "use strict";
-  var DATA_URL = "https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/news.json";
+  // GitHub's API serves the latest copy within about a minute; raw.githubusercontent.com can lag
+  // up to 5 minutes behind, so it's only the fallback (e.g. if the API's hourly limit is reached).
+  var DATA_URLS = [
+    { url: "https://api.github.com/repos/ethanlaneday/news-alerts/contents/news.json?ref=news-data",
+      headers: { "Accept": "application/vnd.github.raw+json" } },
+    { url: "https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/news.json", headers: {} }
+  ];
   var LEVELS = [
     { n: 5, label: "CRITICAL", color: "var(--crit)" },
     { n: 4, label: "HIGH", color: "var(--high)" },
@@ -114,7 +120,8 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
     assoc: load("news.assoc", "all"),
     range: load("news.range", "day"),
     showFyi: false,
-    lastLook: load("news.lastLook", 0)   // seconds; stories seen after this are "new"
+    lastLook: load("news.lastLook", 0),   // seconds; stories seen after this are "new"
+    fetchedAt: 0                           // when this device last got fresh data
   };
 
   function el(tag, attrs, children) {
@@ -166,7 +173,8 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
 
     meta.textContent = "";
     meta.appendChild(el("strong", { text: fresh + " new" }));
-    meta.appendChild(document.createTextNode(" since your last look · updated " + (d.checked ? ago(d.checked) : "—")));
+    meta.appendChild(document.createTextNode(" since your last look · news updated " + (d.checked ? ago(d.checked) : "—") +
+      (state.fetchedAt ? " · checked " + ago(state.fetchedAt) : "")));
 
     function count(a) { return inRange.filter(function (i) { return a === "all" || i.assoc === a; }).length; }
     chips(document.getElementById("assocChips"),
@@ -230,16 +238,22 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
   }
 
   var loading = false;
+  function getData(i) {
+    var src = DATA_URLS[i];
+    return fetch(src.url + (src.url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store", headers: src.headers })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .catch(function (e) { if (i + 1 < DATA_URLS.length) return getData(i + 1); throw e; });
+  }
   function refresh() {
     if (loading) return;
     loading = true;
     var btn = document.getElementById("refresh");
     btn.classList.add("spin");
-    fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    var started = Date.now();
+    getData(0)
       .then(function (d) {
         d.items = Array.isArray(d.items) ? d.items : [];
-        state.data = d; render();
+        state.data = d; state.fetchedAt = Date.now() / 1000; render();
       })
       .catch(function () {
         if (!state.data) {
@@ -248,7 +262,9 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
           document.getElementById("meta").textContent = "Not updated";
         }
       })
-      .then(function () { loading = false; btn.classList.remove("spin"); });
+      .then(function () {
+        setTimeout(function () { loading = false; btn.classList.remove("spin"); }, Math.max(0, 600 - (Date.now() - started)));
+      });
   }
 
   // Leaving the page counts as "looked": next time, only newer stories are marked new.
