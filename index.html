@@ -21,6 +21,7 @@
   --chip-on-bg: #1D2939; --chip-on-fg: #FFFFFF; --chip-line: #D0D5DD;
   --crit: #B42318; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
   --cada-bg: #DBEAFE; --cada-fg: #1E40AF; --heal-bg: #CCFBF1; --heal-fg: #115E59;
+  --new-line: #93C5FD; --new-bg: #2563EB; --new-fg: #FFFFFF;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -28,6 +29,7 @@
     --chip-on-bg: #F2F4F7; --chip-on-fg: #111315; --chip-line: #3A4049;
     --crit: #F97066; --high: #FDB022; --note: #B9C0CB; --fyi: #98A2B3; --unread: #60A5FA;
     --cada-bg: #1E3A8A; --cada-fg: #DBEAFE; --heal-bg: #134E4A; --heal-fg: #CCFBF1;
+    --new-line: #1D4ED8; --new-bg: #3B82F6; --new-fg: #0B1220;
   }
 }
 * { box-sizing: border-box; }
@@ -52,6 +54,8 @@ h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
 .brief { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; }
 .brief h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; color: var(--muted); }
 .brief p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: var(--body); }
+.brief.clamped p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.brief .link-btn { min-height: 36px; margin-top: 2px; }
 .tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
 .tag.CADA { background: var(--cada-bg); color: var(--cada-fg); }
 .tag.HEAL { background: var(--heal-bg); color: var(--heal-fg); }
@@ -73,6 +77,18 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
 .signals { margin: 0; font-size: 12px; color: var(--muted); }
 .more { width: 100%; min-height: 44px; border: 1px dashed var(--chip-line); border-radius: 12px; background: transparent;
   color: var(--body); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; }
+.group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 4px 10px; }
+.group-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.group-head .sub { font-size: 13px; color: var(--muted); font-weight: 500; }
+.link-btn { min-height: 44px; padding: 0 4px; border: none; background: transparent; color: var(--unread);
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.group-new { margin-bottom: 26px; }
+.group-earlier { border-top: 1px solid var(--line); padding-top: 16px; }
+article.unseen { border-color: var(--new-line); }
+.newpill { flex: none; padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  background: var(--new-bg); color: var(--new-fg); }
+.newpill.done { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.all-seen { margin: 0 4px 22px; font-size: 14px; color: var(--muted); }
 .empty, .error { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 12px; }
 .foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
 </style>
@@ -120,9 +136,40 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
     assoc: load("news.assoc", "all"),
     range: load("news.range", "day"),
     showFyi: false,
-    lastLook: load("news.lastLook", 0),   // seconds; stories seen after this are "new"
+    seenIds: load("news.seenIds", null),  // stories this device has shown on screen (id -> 1)
+    newIds: {},
+    briefOpen: load("news.briefOpen", false),                            // unseen when the data was loaded; stay in "New" until the next refresh
+    showNewFyi: false,
     fetchedAt: 0                           // when this device last got fresh data
   };
+
+  // ---- Seen tracking: a story counts as seen once its card has been on screen for ~1 s, or is tapped.
+  function saveSeen() {
+    if (state.data) {   // forget ids that are no longer in the data
+      var keep = {};
+      state.data.items.forEach(function (i) { if (state.seenIds[i.id]) keep[i.id] = 1; });
+      state.seenIds = keep;
+    }
+    save("news.seenIds", state.seenIds);
+  }
+  function markSeen(id, card) {
+    if (state.seenIds[id]) return;
+    state.seenIds[id] = 1;
+    saveSeen();
+    if (card) {
+      var pill = card.querySelector(".newpill");
+      if (pill) { pill.classList.add("done"); pill.textContent = "SEEN"; }
+    }
+    updateMeta();
+  }
+  var watcher = ("IntersectionObserver" in window) ? new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      var card = e.target;
+      if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+        if (!card._seenTimer) card._seenTimer = setTimeout(function () { markSeen(card.dataset.id, card); watcher.unobserve(card); }, 1000);
+      } else if (card._seenTimer) { clearTimeout(card._seenTimer); card._seenTimer = null; }
+    });
+  }, { threshold: [0, 0.6, 1] }) : null;
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -157,24 +204,56 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
     });
   }
 
+  function filtered() {
+    var d = state.data, now = Date.now() / 1000;
+    var span = state.range === "day" ? 86400 : 7 * 86400;
+    var inRange = d.items.filter(function (i) { return now - i.seen < span; });
+    return { inRange: inRange, shown: inRange.filter(function (i) { return state.assoc === "all" || i.assoc === state.assoc; }) };
+  }
+  function updateMeta() {
+    var d = state.data, meta = document.getElementById("meta");
+    if (!d) return;
+    var unseen = filtered().shown.filter(function (i) { return !state.seenIds[i.id]; }).length;
+    meta.textContent = "";
+    meta.appendChild(el("strong", { text: unseen + " new" }));
+    meta.appendChild(document.createTextNode(" · news updated " + (d.checked ? ago(d.checked) : "—") +
+      (state.fetchedAt ? " · checked " + ago(state.fetchedAt) : "")));
+  }
+  function byImportance(a, b) { return b.level - a.level || b.seen - a.seen || b.published - a.published; }
+  function levelOf(n) { return LEVELS.filter(function (L) { return L.n === n; })[0]; }
+
+  function makeCard(i, isNew) {
+    var link = safeLink(i.link);
+    var title = link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", text: i.title }) : el("span", { text: i.title });
+    var info = [i.topic !== i.assoc ? i.topic : null, i.source, ago(i.published)].filter(Boolean).join(" · ");
+    var L = levelOf(i.level);
+    var infoRow = [el("span", { class: "tag " + i.assoc, text: i.assoc })];
+    if (isNew) infoRow.push(el("span", { class: "lvl-word", text: L.label, style: "font-weight:700;letter-spacing:.06em;color:" + L.color }));
+    infoRow.push(el("span", { text: info }));
+    var head = [title];
+    if (isNew) head.unshift(state.seenIds[i.id] ? el("span", { class: "newpill done", text: "SEEN" }) : el("span", { class: "newpill", text: "NEW" }));
+    var card = el("article", { class: isNew ? "unseen" : "", "data-id": i.id }, [
+      el("div", { class: "info" }, infoRow),
+      el("div", { class: "headline" }, head),
+      i.summary ? el("p", { class: "summary", text: i.summary }) : null,
+      i.why ? el("p", { class: "why" }, [el("strong", { text: "Why it matters: " }), document.createTextNode(i.why)]) : null,
+      !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null
+    ]);
+    if (link) title.addEventListener("click", function () { markSeen(i.id, card); });
+    if (isNew && !state.seenIds[i.id] && watcher) watcher.observe(card);
+    return card;
+  }
+
   function render() {
     var d = state.data;
-    var meta = document.getElementById("meta");
     var list = document.getElementById("list");
     var briefBox = document.getElementById("brief");
     list.textContent = ""; briefBox.textContent = "";
+    if (watcher) watcher.disconnect();
     if (!d) return;
 
-    var now = Date.now() / 1000;
-    var span = state.range === "day" ? 86400 : 7 * 86400;
-    var inRange = d.items.filter(function (i) { return now - i.seen < span; });
-    var shown = inRange.filter(function (i) { return state.assoc === "all" || i.assoc === state.assoc; });
-    var fresh = shown.filter(function (i) { return i.seen > state.lastLook && i.level >= 3; }).length;
-
-    meta.textContent = "";
-    meta.appendChild(el("strong", { text: fresh + " new" }));
-    meta.appendChild(document.createTextNode(" since your last look · news updated " + (d.checked ? ago(d.checked) : "—") +
-      (state.fetchedAt ? " · checked " + ago(state.fetchedAt) : "")));
+    var f = filtered(), inRange = f.inRange, shown = f.shown;
+    updateMeta();
 
     function count(a) { return inRange.filter(function (i) { return a === "all" || i.assoc === a; }).length; }
     chips(document.getElementById("assocChips"),
@@ -185,12 +264,16 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
       state.range, function (k) { state.range = k; save("news.range", k); render(); });
 
     if (d.brief && (d.brief.CADA || d.brief.HEAL)) {
-      var b = el("section", { class: "brief", "aria-label": "Today in brief" }, [el("h2", { text: "TODAY IN BRIEF · " + ago(d.brief.at) })]);
+      var b = el("section", { class: "brief" + (state.briefOpen ? "" : " clamped"), "aria-label": "Today in brief" },
+        [el("h2", { text: "TODAY IN BRIEF · " + ago(d.brief.at) })]);
       ["CADA", "HEAL"].forEach(function (a) {
         if ((state.assoc === "all" || state.assoc === a) && d.brief[a]) {
           b.appendChild(el("p", null, [el("span", { class: "tag " + a, text: a }), document.createTextNode(" " + d.brief[a])]));
         }
       });
+      b.appendChild(el("button", { type: "button", class: "link-btn", "aria-expanded": String(state.briefOpen),
+        text: state.briefOpen ? "Show less" : "Show full brief",
+        onclick: function () { state.briefOpen = !state.briefOpen; save("news.briefOpen", state.briefOpen); render(); } }));
       briefBox.appendChild(b);
     }
 
@@ -199,9 +282,39 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
       return;
     }
 
+    // ---- NEW: stories that were unseen when this data loaded, most important first
+    var fresh = shown.filter(function (i) { return state.newIds[i.id]; }).sort(byImportance);
+    var freshMain = fresh.filter(function (i) { return i.level >= 3; });
+    var freshFyi = fresh.filter(function (i) { return i.level < 3; });
+    if (fresh.length) {
+      var g = el("section", { class: "group-new", "aria-label": "New since you last looked" }, [
+        el("div", { class: "group-head" }, [
+          el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + fresh.length })]),
+          el("button", { type: "button", class: "link-btn", text: "Mark all seen", onclick: function () {
+            fresh.forEach(function (i) { state.seenIds[i.id] = 1; });
+            saveSeen(); state.newIds = {}; render(); window.scrollTo(0, 0);
+          } })
+        ])
+      ]);
+      var cards = el("div", { class: "cards" });
+      freshMain.forEach(function (i) { cards.appendChild(makeCard(i, true)); });
+      if (freshFyi.length && state.showNewFyi) freshFyi.forEach(function (i) { cards.appendChild(makeCard(i, true)); });
+      g.appendChild(cards);
+      if (freshFyi.length) g.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
+        text: state.showNewFyi ? "Hide quieter new stories" : "Show " + freshFyi.length + " quieter new stories",
+        onclick: function () { state.showNewFyi = !state.showNewFyi; render(); } }));
+      list.appendChild(g);
+    } else {
+      list.appendChild(el("p", { class: "all-seen", text: "You're all caught up. Nothing new since you last looked." }));
+    }
+
+    // ---- EARLIER: everything already seen, grouped by importance as before
+    var earlier = shown.filter(function (i) { return !state.newIds[i.id]; });
+    if (!earlier.length) return;
+    var wrap = el("div", { class: "group-earlier" }, [el("div", { class: "group-head" }, [
+      el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])])]);
     LEVELS.forEach(function (L) {
-      var items = shown.filter(function (i) { return i.level === L.n; })
-        .sort(function (a, b) { return b.seen - a.seen || b.published - a.published; });
+      var items = earlier.filter(function (i) { return i.level === L.n; }).sort(byImportance);
       if (!items.length) return;
       var sec = el("section", { class: "level", "aria-label": L.label }, [
         el("div", { class: "lvl-head" }, [
@@ -213,28 +326,17 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
       if (L.n === 2 && !state.showFyi) {
         sec.appendChild(el("button", { type: "button", class: "more", text: "Show " + items.length + " quieter stories",
           onclick: function () { state.showFyi = true; render(); } }));
-        list.appendChild(sec);
+        wrap.appendChild(sec);
         return;
       }
       var cards = el("div", { class: "cards" });
-      items.forEach(function (i) {
-        var link = safeLink(i.link);
-        var title = link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", text: i.title }) : el("span", { text: i.title });
-        var isNew = i.seen > state.lastLook;
-        var info = [i.topic !== i.assoc ? i.topic : null, i.source, ago(i.published)].filter(Boolean).join(" · ");
-        cards.appendChild(el("article", null, [
-          el("div", { class: "info" }, [el("span", { class: "tag " + i.assoc, text: i.assoc }), el("span", { text: info })]),
-          el("div", { class: "headline" }, [isNew ? el("span", { class: "new", role: "img", "aria-label": "New" }) : null, title]),
-          i.summary ? el("p", { class: "summary", text: i.summary }) : null,
-          i.why ? el("p", { class: "why" }, [el("strong", { text: "Why it matters: " }), document.createTextNode(i.why)]) : null,
-          !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null
-        ]));
-      });
+      items.forEach(function (i) { cards.appendChild(makeCard(i, false)); });
       sec.appendChild(cards);
       if (L.n === 2) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
         onclick: function () { state.showFyi = false; render(); } }));
-      list.appendChild(sec);
+      wrap.appendChild(sec);
     });
+    list.appendChild(wrap);
   }
 
   var loading = false;
@@ -253,7 +355,18 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
     getData(0)
       .then(function (d) {
         d.items = Array.isArray(d.items) ? d.items : [];
-        state.data = d; state.fetchedAt = Date.now() / 1000; render();
+        state.data = d; state.fetchedAt = Date.now() / 1000;
+        if (state.seenIds === null) {
+          // First time on this device: treat stories older than a day as already seen,
+          // so "New" starts with today's news instead of the whole week.
+          state.seenIds = {};
+          var cutoff = Date.now() / 1000 - 86400;
+          d.items.forEach(function (i) { if (i.seen < cutoff) state.seenIds[i.id] = 1; });
+          saveSeen();
+        }
+        state.newIds = {};
+        d.items.forEach(function (i) { if (!state.seenIds[i.id]) state.newIds[i.id] = 1; });
+        render();
       })
       .catch(function () {
         if (!state.data) {
@@ -267,13 +380,10 @@ article { background: var(--card); border: 1px solid var(--line); border-radius:
       });
   }
 
-  // Leaving the page counts as "looked": next time, only newer stories are marked new.
-  function markLooked() { save("news.lastLook", Date.now() / 1000); }
+  // Coming back to the app reloads: stories seen last time move down to "Earlier".
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden") markLooked();
-    else { state.lastLook = load("news.lastLook", 0); refresh(); }
+    if (document.visibilityState === "visible") refresh();
   });
-  window.addEventListener("pagehide", markLooked);
   document.getElementById("refresh").addEventListener("click", refresh);
   setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
   refresh();
