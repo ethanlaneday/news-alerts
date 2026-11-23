@@ -123,6 +123,9 @@ TOPICS = [
                  r"new motor vehicle sales"],
      "queries": ['"Bank of Canada" (rate OR rates) decision']},
     # ---- HEAL: Organizations for Health Action ----
+    # HEAL follows federal health policy broadly. Terms from its January 2025 consensus document
+    # (health human resources, mental health parity, community-based care) widen these topics as an
+    # extra net; they don't make those areas more important than the rest.
     {"key": "heal", "assoc": "HEAL", "label": "HEAL", "base": 3,
      "require": [re.compile(r"(?i:organizations for health action|health action lobby)|\bHEAL\b")],
      "queries": ['"Organizations for Health Action"',
@@ -142,7 +145,7 @@ TOPICS = [
                  'Canada ("ambient AI" OR "AI dictation" OR "clinical documentation") doctors',
                  'Canada "artificial intelligence" health care (doctors OR nurses OR hospitals OR patients)',
                  'Canada AI health (legislation OR regulation OR bill OR privacy)']},
-    {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 3,   # HEAL priority 2
+    {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 3,
      "require": [CANADA_H, r"mental health|mental illness|addiction|substance use|opioids?|overdose|suicide|psycholog|"
                            r"psychiatr|\bmhsuh\b|camimh|parity"],
      "queries": ['"Canada Mental Health Transfer" OR "mental health transfer"',
@@ -186,7 +189,7 @@ TOPICS = [
                          r"digital health|virtual care|connected care|health records"],
      "queries": ['"Connected Care" OR "health data" Canada federal',
                  "Canada health records interoperability"]},
-    {"key": "community", "assoc": "HEAL", "label": "Community-based care", "base": 3,   # HEAL priority 3
+    {"key": "community", "assoc": "HEAL", "label": "Community-based care", "base": 2,
      "require": [CANADA_H, r"community[- ]based care|community care|community health cent(re|er)s?|team-based care|"
                            r"interprofessional|inter-professional|collaborative care|community paramedic|"
                            r"mobile (health )?clinics?|school-based health|home and community care|"
@@ -201,7 +204,7 @@ TOPICS = [
                          r"emergency (room|department)s?|\ber\b closures?|access to care|unattached patients|walk-in"],
      "queries": ["Canada primary care family doctors federal",
                  'Canada health "wait times"']},
-    {"key": "aging", "assoc": "HEAL", "label": "Aging/caregiving", "base": 3,   # part of HEAL priority 3
+    {"key": "aging", "assoc": "HEAL", "label": "Aging/caregiving", "base": 2,
      "require": [CANADA_H, r"long-term care|home care|seniors|aging|ageing|dementia|caregivers?|palliative",
                  HEALTH + r"|care"],
      "queries": ['"long-term care" OR "home care" Canada federal',
@@ -541,15 +544,14 @@ federal and provincial EV rules and rebates; vehicle supply, prices, sales, fina
 recalls; dealer regulation.
 
 HEAL - Organizations for Health Action, a coalition of 43 national health organizations \
-(provider associations and health charities) that lobbies the federal government. Its three stated federal \
-priorities (January 2025 consensus document) matter most: (1) the health human resources crisis - a national \
-health workforce plan, workforce data, recruitment and retention, faster accreditation of internationally trained \
-professionals, interprovincial mobility and mutual recognition, health worker burnout; (2) mental health parity - \
-the promised Canada Mental Health Transfer, parity legislation (e.g. CAMIMH's Mental Health and Substance Use \
-Health Parity for All Act), funding for mental health and substance use services; (3) community-based care - \
-team-based and interprofessional care, home and community care, caregivers, palliative care, children's health, \
-virtual care and telehealth, community health centres and paramedicine, Indigenous and underserved communities. \
-They also want to know fast about: HEAL itself or its member organizations; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
+(provider associations and health charities) that lobbies the federal government. They care about federal \
+health policy broadly. As an extra signal (not the full picture, and somewhat dated), HEAL's January 2025 \
+consensus document highlighted: the health human resources crisis (workforce plan and data, accreditation of \
+internationally trained professionals, interprovincial mobility, burnout); mental health parity (the promised \
+Canada Mental Health Transfer, parity legislation); and community-based care (team-based care, home and \
+community care, caregivers, palliative care, children's health, virtual care). Treat stories on those as \
+relevant, but never rate a story lower because it falls outside them. \
+They want to know fast about: HEAL itself or its member organizations; federal health funding (Canada Health Transfer, bilateral deals, federal budgets); the \
 health workforce (shortages, national licensure, labour mobility, internationally educated professionals, \
 retention); pharmacare, dental care, drug shortages and drug pricing; the Canada Health Act (private clinics, \
 user fees); health data and digital health; primary care and access; aging, long-term and home care; \
