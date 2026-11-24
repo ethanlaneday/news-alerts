@@ -52,8 +52,12 @@ jobs:
         if: github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test && !inputs.probe
         run: |
           mkdir -p news-data
-          git ls-remote --exit-code --heads origin news-data >/dev/null 2>&1 && \
-            git fetch --depth=1 origin news-data && git show FETCH_HEAD:news.json > news-data/news.json || true
+          if git ls-remote --exit-code --heads origin news-data >/dev/null 2>&1; then
+            git fetch --depth=1 origin news-data
+            git show FETCH_HEAD:news.json > news-data/news.json || true
+            # Outlet icons saved by earlier runs
+            git archive FETCH_HEAD icons 2>/dev/null | tar -x -C news-data 2>/dev/null || true
+          fi
       - name: Check news and notify
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -81,6 +85,7 @@ jobs:
           git config user.name "news-alerts"
           git config user.email "news-alerts@users.noreply.github.com"
           git add news.json
+          [ -d icons ] && git add icons || true
           git commit -q -m "News data $(date -u +%FT%TZ)"
           # One commit, replaced each run, so the branch never grows.
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" news-data

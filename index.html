@@ -389,10 +389,13 @@ article.unseen { border-color: var(--new-line); }
       text: initials });
     var key = outletName(i).toLowerCase();
     var domain = i.domain || DOMAINS[key] || DOMAINS[key.replace(/^the\s+/, "")] || (/^[a-z0-9\-]+(\.[a-z0-9\-]+)+$/.test(key) ? key : "");
-    if (domain && /^[a-z0-9.\-]+$/.test(domain)) {
+    var own = /^icons\/[a-z0-9.\-]+$/.test(i.icon || "") ? i.icon : "";
+    if (own || (domain && /^[a-z0-9.\-]+$/.test(domain))) {
+      // Our own saved copy of the outlet's icon when there is one; a favicon service otherwise.
       var img = el("img", { alt: "", decoding: "async", referrerpolicy: "no-referrer",
-        src: "https://www.google.com/s2/favicons?sz=64&domain=" + encodeURIComponent(domain) });
-      img.addEventListener("load", function () { if (img.naturalWidth > 16) box.classList.add("has-img"); });
+        src: own ? "https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/" + own
+                 : "https://www.google.com/s2/favicons?sz=64&domain=" + encodeURIComponent(domain) });
+      img.addEventListener("load", function () { if (own || img.naturalWidth > 16) box.classList.add("has-img"); });
       box.appendChild(img);
     }
     return box;
