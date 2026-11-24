@@ -596,6 +596,8 @@ def rule_score(item) -> tuple[int, str]:
         if m:
             score += 1
             why.append(f"'{m.group(0).lower()}'")
+    if item.get("force_topic"):   # a mention in Parliament: notable at most without Claude's read of it
+        return min(3, score), "mentioned in Parliament"
     if item.get("official"):
         score += 1
         why.append("official source")
