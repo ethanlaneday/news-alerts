@@ -19,22 +19,22 @@
 :root {
   --bg: #F4F4F2; --card: #FFFFFF; --line: #E4E4E0; --text: #101828; --body: #344054; --muted: #5D6B7E;
   --chip-on-bg: #1D2939; --chip-on-fg: #FFFFFF; --chip-line: #D0D5DD;
-  --crit: #101828; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
-  --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF;
-  --p5-bg: #101828; --p5-fg: #FFFFFF; --p4-bg: #FEF0C7; --p4-fg: #93370D; --p3-bg: #EAECF0; --p3-fg: #344054; --p2-fg: #5D6B7E;
+  --crit: #D92D20; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
+  --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF; --cada-text: #A50E26; --heal-text: #0B5F58;
+  --p5-bg: #D92D20; --p5-fg: #FFFFFF; --p4-bg: #FEF0C7; --p4-fg: #93370D; --p3-bg: #EAECF0; --p3-fg: #344054; --p2-fg: #5D6B7E;
   --soft: #F4F4F2; --foot: #FAFAF8;
-  --o5: #667085; --o4: #EBC58A; --o3: #D0D5DD; --o2: #E4E4E0;
+  --o5: #D92D20; --o4: #DC6803; --o3: #98A2B3; --o2: #E4E4E0;
   --new-line: #93C5FD; --new-bg: #2563EB; --new-fg: #FFFFFF;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #111315; --card: #1A1D21; --line: #2A2F35; --text: #F2F4F7; --body: #D0D5DD; --muted: #98A2B3;
     --chip-on-bg: #F2F4F7; --chip-on-fg: #111315; --chip-line: #3A4049;
-    --crit: #F2F4F7; --high: #FDB022; --note: #B9C0CB; --fyi: #98A2B3; --unread: #60A5FA;
-    --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF;
-    --p5-bg: #F2F4F7; --p5-fg: #111315; --p4-bg: #7A2E0E; --p4-fg: #FEF0C7; --p3-bg: #2A2F35; --p3-fg: #D0D5DD; --p2-fg: #98A2B3;
+    --crit: #F97066; --high: #FDB022; --note: #B9C0CB; --fyi: #98A2B3; --unread: #60A5FA;
+    --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF; --cada-text: #FF7A8C; --heal-text: #2DD4BF;
+    --p5-bg: #D92D20; --p5-fg: #FFFFFF; --p4-bg: #7A2E0E; --p4-fg: #FEF0C7; --p3-bg: #2A2F35; --p3-fg: #D0D5DD; --p2-fg: #98A2B3;
     --soft: #23272C; --foot: #1F2327;
-    --o5: #98A2B3; --o4: #7A5A1E; --o3: #3A4049; --o2: #2A2F35;
+    --o5: #F04438; --o4: #FDB022; --o3: #667085; --o2: #2A2F35;
     --new-line: #1D4ED8; --new-bg: #3B82F6; --new-fg: #0B1220;
   }
 }
@@ -74,8 +74,10 @@ section.level { margin-bottom: 20px; }
 .lvl-head .count { font-size: 12px; color: var(--muted); }
 .cards { display: flex; flex-direction: column; gap: 10px; }
 /* ---- story cards ---- */
-article.card { padding: 0; gap: 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--o2); }
-/* A thin outline hints at importance: dark grey = critical, soft amber = high, the usual line otherwise. */
+article.card { position: relative; padding: 0 0 0 7px; gap: 0; border-radius: 16px; overflow: hidden; border: 2px solid var(--o2); }
+/* Left rail = which association. Outline = how important: red critical, amber high, grey notable. */
+article.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; }
+article.card.a-CADA::before { background: var(--cada); } article.card.a-HEAL::before { background: var(--heal); }
 article.card.lv5 { border-color: var(--o5); } article.card.lv4 { border-color: var(--o4); }
 article.card.lv3 { border-color: var(--o3); } article.card.lv2 { border-color: var(--o2); }
 article.card.unseen { border-color: var(--o2); }
@@ -115,13 +117,13 @@ ul.rows a, ul.rows .t { font-size: 14px; font-weight: 600; line-height: 1.35; co
 ul.rows li.seen a, ul.rows li.seen .t { font-weight: 500; color: var(--body); }
 ul.rows .m, ol.tl .m { font-size: 12px; color: var(--muted); } .m .n { color: var(--unread); font-weight: 700; }
 /* big ongoing story */
-.story-head { padding: 14px 16px 13px; color: var(--on-assoc); display: flex; flex-direction: column; gap: 6px; }
-.story-head.CADA { background: var(--cada); } .story-head.HEAL { background: var(--heal); }
+.story-head { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
 .story-head .row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.story-head .who { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; }
+.story-head .who { display: flex; align-items: baseline; gap: 7px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.story-head .who b { font-size: 14px; font-weight: 800; letter-spacing: 0.07em; }
+.story-head .who b.CADA { color: var(--cada-text); } .story-head .who b.HEAL { color: var(--heal-text); }
 .story-head h3 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.22; letter-spacing: -0.01em; }
-.story-head p { margin: 0; font-size: 13px; opacity: 0.92; }
-.story-head .lvl { background: #FFFFFF; color: #101828; box-shadow: none; }
+.story-head p { margin: 0; font-size: 13px; color: var(--muted); }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -451,8 +453,8 @@ article.unseen { border-color: var(--new-line); }
         ]));
       });
       kids = [
-        el("header", { class: "story-head " + i.assoc }, [
-          el("div", { class: "row1" }, [el("span", { class: "who", text: i.assoc + (topic ? " · " + topic.toUpperCase() : "") }), lvlPill(i.level)]),
+        el("header", { class: "story-head" }, [
+          el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]), lvlPill(i.level)]),
           el("h3", { text: t.story || i.title }),
           el("p", { text: t.items.length + " articles · " + Object.keys(outlets).length + " outlets · updated " + ago(latest) })
         ]),
@@ -502,7 +504,7 @@ article.unseen { border-color: var(--new-line); }
         bar, rows
       ];
     }
-    card = el("article", { class: "card lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids }, kids);
+    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids }, kids);
     if (inNew && unseen && watcher) watcher.observe(card);
     return card;
   }
