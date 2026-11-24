@@ -13,6 +13,10 @@ on:
         description: "Fill the news page with the last 3 days of stories (sends no alerts)"
         type: boolean
         default: false
+      probe:
+        description: "Diagnostic: URLs to fetch and describe (space-separated)"
+        type: string
+        default: ""
       send_test:
         description: "Send one HIGH test alert to your phone (changes nothing)"
         type: boolean
@@ -45,7 +49,7 @@ jobs:
           key: cada-state-${{ github.run_id }}
           restore-keys: cada-state-
       - name: Get the news page's data
-        if: github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test
+        if: github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test && !inputs.probe
         run: |
           mkdir -p news-data
           git ls-remote --exit-code --heads origin news-data >/dev/null 2>&1 && \
@@ -59,16 +63,17 @@ jobs:
           CHECK_FEEDS: ${{ inputs.check_sources && '1' || '' }}
           SEND_TEST: ${{ inputs.send_test && '1' || '' }}
           BACKFILL: ${{ inputs.backfill && '1' || '' }}
+          PROBE: ${{ inputs.probe }}
           NEWS_FILE: ${{ github.ref == 'refs/heads/main' && 'news-data/news.json' || '' }}
         run: python3 tools/news_alerts.py
       - name: Save memory
-        if: success() && !inputs.check_sources && !inputs.send_test && !inputs.backfill
+        if: success() && !inputs.check_sources && !inputs.send_test && !inputs.probe && !inputs.backfill
         uses: actions/cache/save@v4
         with:
           path: .cada-state
           key: cada-state-${{ github.run_id }}
       - name: Publish the news page's data
-        if: success() && github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test
+        if: success() && github.ref == 'refs/heads/main' && !inputs.check_sources && !inputs.send_test && !inputs.probe
         run: |
           [ -f news-data/news.json ] || exit 0
           cd news-data
