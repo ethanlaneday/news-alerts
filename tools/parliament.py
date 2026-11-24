@@ -32,9 +32,9 @@ TRACK_SPONSORS = {"michael ma": "michaelma"}
 # Bill titles are short and formal, so they get their own word lists (the news filters are too loose for them).
 BILL_WORDS = {
     "CADA": r"motor vehicle|automobile|automotive|\bvehicles?\b|customs tariff|\btariffs?\b|cusma|free trade|trade agreement|"
-            r"competition act|consumer|right to repair|excise|luxury tax|zero.emission|carbon|fuel|bank act|interest rate",
+            r"competition act|consumer (protection|rights|data)|used car|right to repair|excise|luxury tax|zero.emission|carbon|fuel|bank act|interest rate",
     "HEAL": r"health|medical|medicine|pharmacare|pharmac|\bdrugs?\b(?! traffick)|dental|nurs|physician|doctor|patient|"
-            r"opioid|tobacco|vaping|disabilit|seniors|long-term care|\bcare\b|artificial intelligence|\bAI\b",
+            r"opioid|tobacco|vaping|disabilit|seniors|(long-term|palliative|primary|connected|home) care|artificial intelligence|\bAI\b",
     "BOTH": r"budget|economic statement",
 }
 # Organisations worth flagging when they appear before a committee.
@@ -91,6 +91,7 @@ def read_bills(na):
             if name in sponsor.lower():
                 topic = topic_for(na, "") or next((t for t in na.TOPICS if t["key"] == key), None)
         text = f"{long_t} {short_t}"
+        text = re.sub(r"(?i)\b(soil|animal|plant|forest|ocean) health\b|child care", " ", text)
         assoc = next((a for a in ("BOTH", "CADA", "HEAL") if re.search(BILL_WORDS[a], text, re.I)), "")
         if not (topic or assoc or num in TRACK_BILLS):
             continue
