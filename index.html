@@ -287,6 +287,8 @@ article.unseen { border-color: var(--new-line); }
 <script>
 (function () {
   "use strict";
+  // What this copy of the page is made of, to compare with the published one (see checkForUpdate).
+  var OWN = { js: (document.currentScript || {}).textContent || "", css: (document.querySelector("style") || {}).textContent || "" };
   // GitHub's API serves the latest copy within about a minute; raw.githubusercontent.com can lag
   // up to 5 minutes behind, so it's only the fallback (e.g. if the API's hourly limit is reached).
   var DATA_URLS = [
@@ -995,9 +997,24 @@ article.unseen { border-color: var(--new-line); }
       });
   }
 
+  // Keep the installed app current: if a newer page has been published, load it. Home-screen apps
+  // otherwise hold on to an old copy until they are force-closed.
+  function checkForUpdate() {
+    if (!OWN.js || Date.now() - (+load("news.reloadedAt", 0)) < 10 * 60 * 1000) return;   // at most once in ten minutes
+    fetch(location.pathname + "?fresh=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (html) {
+        var js = (/<script>([\s\S]*?)<\/script>/.exec(html) || [])[1], css = (/<style>([\s\S]*?)<\/style>/.exec(html) || [])[1];
+        if (!js || !css || (js === OWN.js && css === OWN.css)) return;
+        // Not while you are partway down the page or typing; the next check will catch it.
+        if (window.scrollY > 200 || document.activeElement === document.getElementById("q")) return;
+        save("news.reloadedAt", Date.now());
+        location.replace(location.pathname + "?v=" + Date.now());
+      }).catch(function () {});
+  }
   // Coming back to the app reloads: stories seen last time move down to "Earlier".
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") refresh();
+    if (document.visibilityState === "visible") { checkForUpdate(); refresh(); }
   });
   // Pull to refresh: drag down from the top of the page, let go past the threshold.
   (function () {
@@ -1028,11 +1045,11 @@ article.unseen { border-color: var(--new-line); }
   document.getElementById("filterBtn").addEventListener("click", function () {
     state.filtersOpen = !state.filtersOpen; save("news.filtersOpen", state.filtersOpen); renderFilterBar();
   });
-  setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
+  setInterval(function () { if (document.visibilityState === "visible") { checkForUpdate(); refresh(); } }, 5 * 60 * 1000);
 
   // Opened from a notification (?go=<story id>): note it as seen, then go straight to the article.
   var go = (location.search.match(/[?&]go=([0-9a-f]{16})(?:&|$)/) || [])[1];
-  if (!go) { refresh(); return; }
+  if (!go) { checkForUpdate(); refresh(); return; }
   document.getElementById("meta").textContent = "Opening article…";
   var noted = noteTap(go);
   var tries = 0;

@@ -1,0 +1,259 @@
+"""Checks on the parts most likely to break quietly: what counts as relevant, how stories are grouped,
+the daily key developments, the Parliament data, the health checks, and the page's basic structure."""
+import os
+import struct
+import sys
+import tempfile
+import time
+import unittest
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+os.environ.pop("ANTHROPIC_API_KEY", None)   # tests never call Claude
+
+import health  # noqa: E402
+import keystones as K  # noqa: E402
+import news_alerts as N  # noqa: E402
+import parliament as P  # noqa: E402
+
+NOW = datetime(2026, 11, 24, 12, 0, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+
+
+def item(title, desc="", source="CBC"):
+    return {"title": title, "desc": desc, "source": source, "ts": NOW, "guid": title, "link": "https://x/" + title[:8]}
+
+
+class Relevance(unittest.TestCase):
+    def assoc(self, title, desc=""):
+        t = N.classify(item(title, desc))
+        return t["assoc"] if t else None
+
+    def test_cada_stories(self):
+        self.assertEqual(self.assoc("Canadian Automobile Dealers Association warns on EV mandate"), "CADA")
+        self.assertEqual(self.assoc("Canada and U.S. near deal on auto tariffs under CUSMA"), "CADA")
+        self.assertEqual(self.assoc("Stellantis to idle Brampton assembly plant in Ontario"), "CADA")
+
+    def test_heal_stories(self):
+        self.assertEqual(self.assoc("Ottawa unveils national pharmacare funding deal with provinces"), "HEAL")
+        self.assertEqual(self.assoc("Organizations for Health Action urges federal action on health workforce"), "HEAL")
+
+    def test_unrelated_story_is_dropped(self):
+        self.assertIsNone(self.assoc("Local bakery wins award for best croissant"))
+
+    def test_outlet_name_alone_does_not_make_a_story_relevant(self):
+        self.assertIsNone(N.classify(item("Best hiking boots of the year", source="Automotive News Canada")))
+
+    def test_trusted_outlets(self):
+        for name in ("CBC", "Reuters", "The Globe and Mail", "Parliament of Canada (LEGISinfo)"):
+            self.assertTrue(N.trusted_record({"source": name}), name)
+        for name in ("kendranewsaustralia.com.au", "Foro3D"):
+            self.assertFalse(N.trusted_record({"source": name}), name)
+
+
+class Grouping(unittest.TestCase):
+    STORY = {"story": "Canada-U.S. CUSMA trade talks", "assoc": "CADA",
+             "titles": [("U.S. trade chief says Canada tariff deal is close", 0), ("Ford will not back a U.S.-Canada deal", 0)]}
+
+    def art(self, title, assoc="CADA"):
+        return {"title": title, "desc": "", "source": "x", "topic": {"assoc": assoc}}
+
+    def test_same_matter_joins(self):
+        self.assertTrue(N.fits_story(self.art("LeBlanc heads to Washington for CUSMA talks"), self.STORY))
+
+    def test_shared_broad_subject_does_not_join(self):
+        self.assertFalse(N.fits_story(self.art("Canada and China extend trade deals as Xi meets Carney"), self.STORY))
+
+    def test_other_association_does_not_join(self):
+        self.assertFalse(N.fits_story(self.art("CUSMA talks and drug prices", assoc="HEAL"), self.STORY))
+
+
+class Keystones(unittest.TestCase):
+    def setUp(self):
+        self.path = os.path.join(tempfile.mkdtemp(), "news.json")
+
+    def art(self, n, title, source="CBC", at=NOW - 3600):
+        return {"id": f"a{n}", "thread": "T1", "story": "Auto tariff talks", "assoc": "CADA", "topic": "Trade/CUSMA",
+                "level": 3, "title": title, "source": source, "link": f"https://x/{n}", "published": at, "seen": at,
+                "summary": ""}
+
+    def run_pass(self, news, answer, now=NOW):
+        calls = []
+
+        def ask(story, fresh, _now):
+            calls.append([a["id"] for a in fresh])
+            return answer
+        K.update(news, self.path, now, ask, trusted=N.trusted_record)
+        return calls
+
+    FACT = {"date": "2026-11-23", "part": "Autos", "replaces": [],
+            "text": "Canada and the U.S. agreed to cut the auto tariff from 25 to 10 percent effective January 1."}
+
+    def test_adds_cited_fact_and_rejects_bad_ones(self):
+        news = {"items": [self.art(1, "Tariff cut agreed"), self.art(2, "Reaction"), self.art(3, "Analysis")]}
+        answer = {"stands": "Canada and the U.S. have agreed to lower the auto tariff starting in January.", "confirm": [], "add": [
+            dict(self.FACT, articles=[0]),
+            dict(self.FACT, articles=[0], text="Canada and U.S. agreed to cut auto tariff from 25 to 10 percent, effective January 1."),
+            {"date": "2026-11-23", "part": "Steel", "replaces": [], "articles": [99],
+             "text": "A claim with no article behind it should never be recorded at all."}]}
+        self.run_pass(news, answer)
+        keys = news["stories"]["T1"]["keys"]
+        self.assertEqual(len(keys), 1)                       # the duplicate and the uncited one are gone
+        self.assertEqual(keys[0]["src"][0]["source"], "CBC")
+        self.assertFalse(keys[0]["prov"])
+
+    def test_runs_once_a_day_and_only_on_new_articles(self):
+        news = {"items": [self.art(1, "a"), self.art(2, "b"), self.art(3, "c")]}
+        empty = {"stands": "", "add": [], "confirm": []}
+        self.assertEqual(len(self.run_pass(news, empty)), 1)
+        self.assertEqual(len(self.run_pass(news, empty, NOW + 600)), 0)
+        news["items"].append(self.art(4, "d", at=NOW + 80000))
+        self.assertEqual(self.run_pass(news, empty, NOW + 86400), [["a4"]])
+
+    def test_untrusted_fact_is_provisional_then_confirmed(self):
+        news = {"items": [self.art(1, "x", "Foro3D"), self.art(2, "y", "Foro3D"), self.art(3, "z", "Foro3D")]}
+        self.run_pass(news, {"stands": "", "confirm": [], "add": [dict(self.FACT, articles=[0])]})
+        self.assertTrue(news["stories"]["T1"]["keys"][0]["prov"])
+        news["items"].append(self.art(4, "Tariff cut confirmed", "Reuters", at=NOW + 80000))
+        self.run_pass(news, {"stands": "", "add": [], "confirm": [{"key": "k1", "articles": [0]}]}, NOW + 86400)
+        key = news["stories"]["T1"]["keys"][0]
+        self.assertFalse(key["prov"])
+        self.assertEqual(key["src"][0]["source"], "Reuters")
+
+    def test_unconfirmed_fact_expires(self):
+        news = {"items": [self.art(1, "x", "Foro3D"), self.art(2, "y", "Foro3D"), self.art(3, "z", "Foro3D")]}
+        self.run_pass(news, {"stands": "", "confirm": [], "add": [dict(self.FACT, articles=[0])]})
+        self.run_pass(news, {"stands": "", "add": [], "confirm": []}, NOW + 49 * 3600)
+        self.assertNotIn("T1", news["stories"])
+
+    def test_claude_failure_loses_nothing(self):
+        news = {"items": [self.art(1, "a"), self.art(2, "b"), self.art(3, "c")]}
+
+        def broken(*_):
+            raise RuntimeError("down")
+        for n in range(4):
+            K.update(news, self.path, NOW + n * 300, broken)
+        story = K.load(K.stories_path(self.path))["stories"]["T1"]
+        self.assertEqual(story["digested"], {})
+        self.assertEqual(story["tries"], K.TRIES_PER_DAY)
+
+
+class Parliament(unittest.TestCase):
+    def test_agenda_is_pulled_from_a_notice(self):
+        page = """<html><head><title>x</title></head><body><nav><a>Menu</a></nav>
+        <p>NOTICE OF MEETING</p><p>Standing Committee on Health (HESA)</p><p>45th Parliament, 1st Session</p>
+        <p>Meeting 46</p><p>Wednesday, November 25, 2026, 4:30 p.m. to 6:30 p.m.</p><p>Televised Amended</p>
+        <p>Artificial Intelligence in Health Care</p><p>Witnesses Amended</p><p>Canadian Medical Association</p>
+        <ul><li>Dr. A B, President ( by videoconference )</li></ul><p>Clerk of the committee</p><p>Jane (613-555-1212)</p></body></html>"""
+        subject, rest = P.agenda_of(P.notice_lines(page))
+        self.assertEqual(subject, "Artificial Intelligence in Health Care")
+        self.assertEqual(rest, ["Canadian Medical Association", "Dr. A B, President"])
+
+    def test_bill_word_lists(self):
+        import re
+
+        def side(title):
+            title = re.sub(r"(?i)\b(soil|animal|plant|forest|ocean) health\b|child care", " ", title)
+            return next((a for a in ("BOTH", "CADA", "HEAL") if re.search(P.BILL_WORDS[a], title, re.I)), None)
+        self.assertEqual(side("Used Car Tax Cut Act"), "CADA")
+        self.assertEqual(side("Mental Health Parity Act"), "HEAL")
+        self.assertEqual(side("Budget Implementation Act"), "BOTH")
+        self.assertIsNone(side("Jury Duty Appreciation Week Act"))
+        self.assertIsNone(side("National Strategy for Soil Health Act"))
+
+    def test_bill_progress_steps(self):
+        house = {"PassedHouseFirstReadingDateTime": "2026-10-01T00:00:00", "PassedHouseSecondReadingDateTime": "2026-10-20T00:00:00"}
+        self.assertEqual(sum(1 for t in P.bill_steps(house) if t), 2)
+        senate = dict(house, IsSenateBill=True, PassedSenateFirstReadingDateTime="2026-09-01T00:00:00")
+        self.assertTrue(P.bill_steps(senate)[0] and P.bill_steps(senate)[3])
+
+    def test_notes_are_cached_and_irrelevant_bills_dropped(self):
+        P_get, P_sp = P.bill_summary, P.bill_sponsor
+        P.bill_summary = lambda na, num: "This enactment does something."
+        P.bill_sponsor = lambda na, num: "Jane Doe (MP for Somewhere)"
+        try:
+            data = {"bills": [{"num": "C-1", "title": "A", "long": "", "assoc": "HEAL", "sponsor": ""},
+                              {"num": "C-2", "title": "B", "long": "", "assoc": "CADA", "sponsor": ""}],
+                    "meetings": [{"url": "/m/1", "committee": "Health", "code": "HESA", "date": "2026-11-25", "subject": "AI",
+                                  "agenda": ["CMA"], "assoc": "HEAL", "topic": "", "witness": ""}]}
+            asked = []
+
+            def ask(bills, meetings):
+                asked.append((len(bills), len(meetings)))
+                return {"bills": [{"n": 0, "note": "Does a thing.", "relevance": 2}, {"n": 1, "note": "x", "relevance": 0}],
+                        "meetings": [{"n": 0, "priority": 2, "assoc": "HEAL", "why": "On file"}]}
+            P.annotate(None, data, NOW, ask)
+            self.assertEqual([b["num"] for b in data["bills"]], ["C-1"])
+            self.assertEqual(data["bills"][0]["note"], "Does a thing.")
+            self.assertEqual(data["meetings"][0]["priority"], 2)
+            P.annotate(None, data, NOW + 60, ask)
+            self.assertEqual(asked, [(2, 1), (0, 0)])        # nothing is asked twice
+        finally:
+            P.bill_summary, P.bill_sponsor = P_get, P_sp
+
+
+class Health(unittest.TestCase):
+    def local(self, hour):
+        return datetime(2026, 11, 24, hour, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    def test_claude_failing_alerts_once_then_reports_recovery(self):
+        state, sent = {}, []
+        alert = lambda title, msg, tags: sent.append(title)   # noqa: E731
+        for n in range(5):
+            N.health_check(state, NOW + n * 300, False, self.local(12), True, False, [], alert)
+        self.assertEqual(len(sent), 1)
+        N.health_check(state, NOW + 2000, False, self.local(12), True, True, [], alert)
+        self.assertEqual(len(sent), 2)
+        self.assertIn("again", sent[1])
+
+    def test_no_alerts_overnight(self):
+        state, sent = {}, []
+        for n in range(5):
+            N.health_check(state, NOW + n * 300, True, self.local(2), True, False, [], lambda *a: sent.append(a))
+        self.assertEqual(sent, [])
+
+    def test_source_down_a_day_is_reported_once_a_day(self):
+        state, sent = {}, []
+        alert = lambda title, msg, tags: sent.append(msg)   # noqa: E731
+        N.health_check(state, NOW, False, self.local(12), False, False, ["feed:x"], alert)
+        self.assertEqual(sent, [])
+        for extra in (25 * 3600, 25 * 3600 + 300):
+            N.health_check(state, NOW + extra, False, self.local(13), False, False, ["feed:x"], alert)
+        self.assertEqual(len(sent), 1)
+        self.assertIn("x", sent[0])
+
+    def test_watchdog_decisions(self):
+        self.assertEqual(health.decide(5, {}, NOW, 12)[0], [])
+        self.assertEqual(health.decide(25, {}, NOW, 12)[0], ["restart"])
+        actions, state = health.decide(50, {}, NOW, 12)
+        self.assertEqual(actions, ["restart", "alert"])
+        self.assertEqual(health.decide(60, state, NOW + 600, 12)[0], ["restart"])      # no repeat within six hours
+        self.assertEqual(health.decide(50, {}, NOW, 3)[0], ["restart"])                # quiet overnight
+        self.assertEqual(health.decide(3, state, NOW + 900, 12)[0], ["recovered"])
+
+
+class Icons(unittest.TestCase):
+    def test_image_checks(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack(">II", 180, 180) + b"x" * 200
+        tiny = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack(">II", 16, 16) + b"x" * 200
+        self.assertEqual(N.image_ext(png), "png")
+        self.assertEqual(N.image_ext(tiny), "")
+        self.assertEqual(N.image_ext(b"<html>not an image</html>" * 20), "")
+
+    def test_outlet_sites(self):
+        self.assertEqual(N.outlet_site({"source": "The Globe and Mail"}), "theglobeandmail.com")
+        self.assertEqual(N.outlet_site({"source": "The Hub | More Signal."}), "thehub.ca")
+        self.assertEqual(N.outlet_site({"source": "Unknown Outlet"}), "")
+
+
+class Page(unittest.TestCase):
+    def test_page_has_its_working_parts(self):
+        html = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
+        for needed in ('id="list"', 'id="tabs"', 'id="filters"', 'id="ptr"', "function render()", "function renderParl(",
+                       "function checkForUpdate("):
+            self.assertIn(needed, html, needed)
+
+
+if __name__ == "__main__":
+    unittest.main()
