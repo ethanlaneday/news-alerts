@@ -1295,13 +1295,17 @@ def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
     for u in urls.split():
         try:
-            req = urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "*/*"})
+            browser = u.startswith("b:")  # "b:https://…" = ask the way a browser would
+            u = u[2:] if browser else u
+            req = urllib.request.Request(u, headers={"User-Agent": BROWSER_UA if browser else UA, "Accept": "*/*",
+                                                     "Accept-Language": "en-CA,en;q=0.9"})
             with urllib.request.urlopen(req, timeout=25) as resp:
                 body = resp.read(400000)
                 text = body.decode("utf-8", "replace")
                 links = sorted(set(re.findall(r'(?:href|src)="([^"]*(?:rss|feed|atom|xml)[^"]*)"', text, re.I)))[:15]
                 print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
                 print("   head:", re.sub(r"\s+", " ", text[:int(os.environ.get("PROBE_CHARS") or 500)]))
+                print("   keys:", sorted(set(re.findall(r'"(\w*(?:DateTime|Reading|Assent|Committee)\w*)":', text)))[:80])
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:
