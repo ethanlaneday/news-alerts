@@ -735,6 +735,16 @@ def fits_story(it, story) -> bool:
     return bool(distinct_words(item_text(it)) & theirs)
 
 
+AI_LAST_ERROR = ""
+
+
+def claude_note(msg: str):
+    """Remember why Claude could not rate this run (the health check reports it if it keeps happening)."""
+    global AI_LAST_ERROR
+    AI_LAST_ERROR = msg[:160]
+    print(f"Claude: {msg}; using rules", file=sys.stderr)
+
+
 def ai_score(items, already_sent=(), stories=()) -> bool:
     """Set item['level'] / item['why'] using Claude. Returns False if unavailable."""
     if not items or not os.environ.get("ANTHROPIC_API_KEY"):
@@ -777,22 +787,22 @@ def ai_score(items, already_sent=(), stories=()) -> bool:
             fallbacks="default",
         )
     except anthropic.AuthenticationError:
-        print("Claude: invalid ANTHROPIC_API_KEY; using rules", file=sys.stderr)
+        claude_note("invalid API key")
         return False
     except anthropic.RateLimitError:
-        print("Claude: rate limited; using rules", file=sys.stderr)
+        claude_note("rate limited")
         return False
     except anthropic.APIStatusError as e:
-        print(f"Claude: API error {e.status_code}; using rules", file=sys.stderr)
+        claude_note(f"API error {e.status_code}" + (" (credit may have run out)" if e.status_code in (400, 402, 403) else ""))
         return False
     except anthropic.APIConnectionError:
-        print("Claude: connection error; using rules", file=sys.stderr)
+        claude_note("connection error")
         return False
     except Exception as e:  # e.g. an older SDK without a parameter: never let scoring break alerts
-        print(f"Claude: {type(e).__name__}: {e}; using rules", file=sys.stderr)
+        claude_note(f"{type(e).__name__}: {e}")
         return False
     if resp.stop_reason in ("refusal", "max_tokens"):
-        print(f"Claude: stopped ({resp.stop_reason}); using rules", file=sys.stderr)
+        claude_note(f"stopped ({resp.stop_reason})")
         return False
     try:
         text = next(b.text for b in resp.content if b.type == "text")
@@ -1445,6 +1455,47 @@ def check_feeds(server, topic, feed_override):
     return 0
 
 
+# ------------------------------- health check --------------------------------
+AI_FAILS_BEFORE_ALERT = 3      # runs in a row (about 15 minutes)
+SOURCE_DOWN_HOURS = 24
+REPEAT_ALERT_HOURS = 12
+
+
+def health_check(state, now, quiet, local, ai_wanted, ai_ok, failed, send_alert):
+    """Notice slow-burning problems and say so once: Claude not rating stories, or a source dead for a day.
+    (A separate workflow, health.yml, watches for the runs themselves stopping.)"""
+    h = state.setdefault("health", {})
+    if ai_wanted:
+        if ai_ok:
+            if h.get("ai_alerted"):
+                send_alert("News alerts: Claude is rating stories again", "Back to normal.", ["white_check_mark"])
+            h["ai_fails"], h["ai_alerted"] = 0, 0
+        else:
+            h["ai_fails"] = h.get("ai_fails", 0) + 1
+            h["ai_error"] = AI_LAST_ERROR
+            if h["ai_fails"] >= AI_FAILS_BEFORE_ALERT and not quiet \
+                    and now - h.get("ai_alerted", 0) > REPEAT_ALERT_HOURS * 3600:
+                send_alert("News alerts: Claude isn't rating stories",
+                           f"Stories are being rated by keyword rules instead, so ratings and summaries are rougher. "
+                           f"Reason: {AI_LAST_ERROR or 'unknown'}. If it mentions credit or the API key, check "
+                           f"console.anthropic.com.", ["warning"])
+                h["ai_alerted"] = now
+    down = h.setdefault("down", {})
+    for sid in list(down):
+        if sid not in failed:
+            del down[sid]
+    for sid in failed:
+        down.setdefault(sid, now)
+    today = local.strftime("%Y-%m-%d")
+    dead = sorted(sid for sid, since in down.items() if now - since > SOURCE_DOWN_HOURS * 3600)
+    if dead and not quiet and local.hour >= 9 and h.get("src_day") != today:
+        h["src_day"] = today
+        send_alert(f"News alerts: {len(dead)} source{'s' if len(dead) > 1 else ''} down for over a day",
+                   "Not answering: " + ", ".join(d.split(":", 1)[-1] for d in dead[:8])
+                   + (f" and {len(dead) - 8} more" if len(dead) > 8 else "")
+                   + ". Other sources still cover the news; these may need replacing.", ["warning"])
+
+
 def main() -> int:
     topic = os.environ.get("NTFY_TOPIC", "").strip()
     if not topic and os.environ.get("DRY_RUN") != "1":
@@ -1477,11 +1528,12 @@ def main() -> int:
     sent_recent = [(set(e[0]), e[1], e[2] if len(e) > 2 else 3, e[3] if len(e) > 3 else "")
                    for e in state["sent"] if now - e[1] < SIMILAR_HOURS * 3600]
 
-    fresh, ok, total, new_seeds = [], 0, 0, []
+    fresh, ok, total, new_seeds, failed_sources = [], 0, 0, [], []
     for src, items, err in read_all(feed_override):
         total += 1
         if err:
             print(f"[{src['id']}] failed: {err}", file=sys.stderr)
+            failed_sources.append(src["id"])
             continue
         ok += 1
         src_seeding = src["id"].startswith("feed:") and src["id"] not in seeded
@@ -1544,7 +1596,8 @@ def main() -> int:
             stories += keystones.on_file(news_path, now, have={g["tid"] for g in stories})
         except Exception as e:
             print(f"keystones on file: {e}", file=sys.stderr)
-    if cands and ai_score(cands[:40], already, stories):
+    ai_ok = bool(cands) and ai_score(cands[:40], already, stories)
+    if ai_ok:
         for it in cands[:40]:
             if it.get("by_ai"):
                 apply_outlet_rules(it, after_ai=True)
@@ -1565,6 +1618,11 @@ def main() -> int:
     except ValueError:
         qs, qe = 22, 8
     quiet = qs != qe and ((qs <= local.hour or local.hour < qe) if qs > qe else (qs <= local.hour < qe))
+    try:
+        health_check(state, now, quiet, local, bool(cands) and bool(os.environ.get("ANTHROPIC_API_KEY")), ai_ok,
+                     failed_sources, lambda title, msg, tags: send(server, topic, title, msg, priority=3, tags=tags))
+    except Exception as e:  # the health check must never stop the news
+        print(f"health check: {e}", file=sys.stderr)
     held = state.setdefault("held", [])
     if quiet:
         for it in to_send:
