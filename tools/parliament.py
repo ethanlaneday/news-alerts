@@ -29,6 +29,19 @@ WATCH = {"HESA": "HEAL", "CIIT": "CADA", "INDU": "CADA", "TRAN": "CADA", "ENVI":
 # Bills to follow whatever their title says, e.g. "C-12". Sponsors are matched on their name.
 TRACK_BILLS = set()
 TRACK_SPONSORS = {"michael ma": "michaelma"}
+# Bill titles are short and formal, so they get their own word lists (the news filters are too loose for them).
+BILL_WORDS = {
+    "CADA": r"motor vehicle|automobile|automotive|\bvehicles?\b|customs tariff|\btariffs?\b|cusma|free trade|trade agreement|"
+            r"competition act|consumer|right to repair|excise|luxury tax|zero.emission|carbon|fuel|bank act|interest rate",
+    "HEAL": r"health|medical|medicine|pharmacare|pharmac|\bdrugs?\b(?! traffick)|dental|nurs|physician|doctor|patient|"
+            r"opioid|tobacco|vaping|disabilit|seniors|long-term care|\bcare\b|artificial intelligence|\bAI\b",
+    "BOTH": r"budget|economic statement",
+}
+# Organisations worth flagging when they appear before a committee.
+WITNESS_WORDS = (r"automobile dealers|vehicle manufacturers|global automakers|automotive parts|\bunifor\b|"
+                 r"organizations for health action|canadian medical association|canadian nurses association|healthcarecan|"
+                 r"canadian pharmacists|canadian dental|canadian psychological|mental health commission|"
+                 r"canadian institute for health information|canada health infoway")
 
 
 def get_json(na, url):
@@ -77,9 +90,13 @@ def read_bills(na):
         for name, key in TRACK_SPONSORS.items():
             if name in sponsor.lower():
                 topic = topic_for(na, "") or next((t for t in na.TOPICS if t["key"] == key), None)
-        topic = topic or topic_for(na, f"{long_t} {short_t}")
-        if not topic and num not in TRACK_BILLS:
+        text = f"{long_t} {short_t}"
+        assoc = next((a for a in ("BOTH", "CADA", "HEAL") if re.search(BILL_WORDS[a], text, re.I)), "")
+        if not (topic or assoc or num in TRACK_BILLS):
             continue
+        guess = topic_for(na, text)
+        if not topic and guess and guess["assoc"] == assoc:
+            topic = guess
         steps = bill_steps(b)
         done = max((i + 1 for i, t in enumerate(steps) if t), default=0)
         last = max(steps + [iso_ts(b.get("LatestBillEventDateTime")), iso_ts(b.get("LatestCompletedBillStageDateTime"))])
@@ -92,7 +109,8 @@ def read_bills(na):
             "senate": bool(b.get("IsSenateBill")), "done": done,
             "status": (b.get("StatusNameEn") or b.get("LatestCompletedMajorStageNameWithChamberSuffix") or "").strip(),
             "changed": last,
-            "assoc": topic["assoc"] if topic else "BOTH", "topic": topic["label"] if topic else "Tracked",
+            "assoc": topic["assoc"] if topic else (assoc or "BOTH"),
+            "topic": topic["label"] if topic else {"CADA": "Auto and trade", "HEAL": "Health", "BOTH": "Budget"}.get(assoc, "Tracked"),
             "link": f"https://www.parl.ca/legisinfo/en/bill/{b.get('ParliamentNumber')}-{b.get('SessionNumber')}/{num.lower()}",
         })
     out.sort(key=lambda x: -x["changed"])
@@ -102,7 +120,8 @@ def read_bills(na):
 # ---------------------------------------------------------------- committee meetings
 BLOCK = r"(?i)</?(?:p|div|br|li|ul|ol|tr|td|th|table|h[1-6]|section|article|header|footer|span\s+class=\"[^\"]*(?:Witness|Organization)[^\"]*\")\b[^>]*>"
 SKIP_LINE = re.compile(
-    r"(?i)^(notice of meeting|amended|meeting \d+|meeting no\.? ?\d+|televised|webcast|in camera|\d{1,2}:\d\d ?[ap]\.?m\.?.*|"
+    r"(?i)^(notice of meeting|amended|(standing|special|joint|sub).*committee.*|\d+(st|nd|rd|th) parliament.*|"
+    r"(witness(es)?|televised|webcast|in camera|public)( amended)?|meeting \d+|meeting no\.? ?\d+|televised|webcast|in camera|\d{1,2}:\d\d ?[ap]\.?m\.?.*|"
     r"(mon|tues|wednes|thurs|fri|satur|sun)day,.*|room .*|.* block$|.*building.*|witness(es)?|videoconference|"
     r"by videoconference|\(public\)|public|amended section|\*+.*|to be determined|.*sir john a\. macdonald.*)$")
 
@@ -126,7 +145,7 @@ def notice_lines(page: str):
         if ln.lower() in seen:
             continue
         seen.add(ln.lower())
-        out.append(ln[:180])
+        out.append(re.sub(r"\s*\(\s*by videoconference\s*\)", "", ln, flags=re.I)[:180])
     return out[:60]
 
 
@@ -180,7 +199,8 @@ def read_meetings(na, old, now):
             except Exception:
                 m.setdefault("subject", "")
                 m.setdefault("agenda", [])
-        topic = topic_for(na, " ".join([m.get("subject", "")] + m.get("agenda", [])))
+        topic = topic_for(na, m.get("subject", ""))   # the study's title only; witness lists match too much
+        m["witness"] = next((ln for ln in m.get("agenda", []) if re.search(WITNESS_WORDS, ln, re.I)), "")
         m["assoc"] = topic["assoc"] if topic else WATCH[code]
         m["topic"] = topic["label"] if topic else ""
         m["first_seen"] = m.get("first_seen") or int(now)
@@ -265,12 +285,10 @@ def debug(na):
     """Run once into a scratch folder and print a short sample (used to check the sources from the runner)."""
     import tempfile
     d = update(os.path.join(tempfile.mkdtemp(), "news.json"), time.time(), na, force=True)
-    for b in d.get("bills", [])[:6]:
-        print(f"BILL {b['num']} [{b['assoc']}/{b['topic']}] step {b['done']}/7 | {b['status']} | {b['title'][:70]} | {b['sponsor'][:50]}")
+    for b in d.get("bills", [])[:40]:
+        print(f"BILL {b['num']} [{b['assoc']}/{b['topic']}] step {b['done']}/7 | {b['status']} | {b['title'][:60]}")
     for m in d.get("meetings", [])[:8]:
-        print(f"MEET {m['date']} {m.get('start')} {m['code']} #{m.get('num')} [{m['assoc']}/{m['topic']}] {m.get('subject', '')[:90]!r}")
-        for ln in m.get("agenda", [])[:5]:
-            print(f"       - {ln[:100]}")
+        print(f"MEET {m['date']} {m.get('start')} {m['code']} [{m['assoc']}/{m['topic']}] {m.get('subject', '')[:70]!r} +{len(m.get('agenda', []))} | {m.get('witness', '')[:50]}")
     for m in d.get("mentions", [])[:4]:
         print(f"SAID {m['who']} | {m['role']} | {m['where']} | {m['about'][:40]} | {m['quote'][:90]}")
     return 0
