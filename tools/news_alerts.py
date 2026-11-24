@@ -1306,6 +1306,11 @@ def probe(urls):
                 print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
                 print("   head:", re.sub(r"\s+", " ", text[:int(os.environ.get("PROBE_CHARS") or 500)]))
                 print("   keys:", sorted(set(re.findall(r'"(\w*(?:DateTime|Reading|Assent|Committee)\w*)":', text)))[:80])
+                if "<html" in text[:2000].lower():
+                    plain = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " | ", re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", text))))
+                    plain = re.sub(r"( \| )+", " | ", plain)
+                    at = max(plain.lower().find("notice of meeting", 600), 0)
+                    print("   text:", plain[at:at + 3500])
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:
