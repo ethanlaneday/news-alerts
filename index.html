@@ -686,7 +686,7 @@ article.unseen { border-color: var(--new-line); }
     // -- said in Parliament
     var said = (p.mentions || []).filter(show);
     var moreS = !!state.parlMore.said, shownS = moreS ? said : said.slice(0, 6);
-    sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "SAID IN PARLIAMENT" }), el("span", { text: "last three weeks · about a day behind" })])]);
+    sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "SAID IN PARLIAMENT" }), el("span", { text: "last three weeks" })])]);
     if (said.length) {
       var ul = el("ul", { class: "p-list" });
       shownS.forEach(function (m) {
