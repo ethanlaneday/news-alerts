@@ -911,6 +911,24 @@ def read_all(feed_override):
         yield from pool.map(one, sources)
 
 
+def probe(urls):
+    """Diagnostic: fetch each URL from the runner and print what comes back."""
+    for u in urls.split():
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "*/*"})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                body = resp.read(400000)
+                text = body.decode("utf-8", "replace")
+                links = sorted(set(re.findall(r'(?:href|src)="([^"]*(?:rss|feed|atom|xml)[^"]*)"', text, re.I)))[:15]
+                print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
+                print("   head:", re.sub(r"\s+", " ", text[:500]))
+                print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
+                print("   feed-like links:", links)
+        except Exception as e:
+            print(f"PROBE FAIL {u} :: {type(e).__name__}: {e}")
+    return 0
+
+
 def check_feeds(server, topic, feed_override):
     rows, bad, quiet = [], [], []
     for src, items, err in read_all(feed_override):
@@ -929,6 +947,14 @@ def check_feeds(server, topic, feed_override):
                         rows.append(f"       raw fetch failed: {e}")
             if not items:
                 quiet.append(src["id"])
+                if src["id"].startswith("google:") and not feed_override:
+                    # Quiet day, or a search Google can't parse? Try the same search over a week.
+                    try:
+                        wk = list(parse(fetch(src["url"].replace("when%3A1d", "when%3A7d"))))
+                        q = urllib.parse.unquote(src["url"].split("&q=", 1)[1])
+                        rows.append(f"       7-day retry: {len(wk)} items | {q}")
+                    except Exception as e:
+                        rows.append(f"       7-day retry failed: {e}")
         except Exception as e:
             rows.append(f"FAIL {src['id']:<28} {e}")
             bad.append(src["id"])
@@ -970,6 +996,8 @@ def main() -> int:
                  click="https://ethanlaneday.github.io/news-alerts/", priority=4,
                  tags=[ASSOCS[assoc]["emoji"], "red_circle"])
         return 0
+    if os.environ.get("PROBE", "").strip():
+        return probe(os.environ["PROBE"])
     if os.environ.get("BACKFILL") == "1":
         return backfill(server, topic, feed_override)
     if os.environ.get("CHECK_FEEDS") == "1":
