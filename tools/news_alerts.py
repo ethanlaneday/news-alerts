@@ -36,6 +36,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------------
 # TOPICS: what counts as relevant. Edit freely.
@@ -277,6 +278,21 @@ FEEDS = [
     # This feed carries lots of U.S. stories, so judge it on the headline alone.
     {"id": "an-canada", "name": "Automotive News Canada", "title_only": True,
      "url": "https://www.autonews.com/arc/outboundfeeds/rss/category/canada/"},
+    # What's said in the House and committees (Hansard via openparliament.ca, usually a day behind).
+    # "parl" is the phrase searched; "topic" files the mention under that topic directly.
+    *[{"id": "parl-" + pid, "name": "Parliament (Hansard)", "official": True, "parl": phrase, "topic": tkey,
+       "max_age_hours": 120,
+       "url": "https://openparliament.ca/search/feed/?q=" + urllib.parse.quote_plus(q)}
+      for pid, phrase, tkey, q in [
+          ("auto-dealers", "automobile dealers", "cada", '"automobile dealers"'),
+          ("car-dealers", "auto dealers", "cada", '"auto dealers"'),
+          ("ev-standard", "the EV Availability Standard", "evpolicy", '"Electric Vehicle Availability Standard"'),
+          ("heal", "Organizations for Health Action", "heal", '"Organizations for Health Action"'),
+          ("hhr", "health human resources", "workforce", '"health human resources"'),
+          ("mh-transfer", "the mental health transfer", "mentalhealth", '"mental health transfer"'),
+          ("ai-scribe", "AI scribes", "aihealth", '"AI scribe"'),
+          ("ai-health", "AI in health care", "aihealth", '"artificial intelligence" "health care"'),
+      ]],
     # Official sources: often the first place news appears. (The Canada Gazette's feeds
     # only list whole issues, not individual regulations, and Statistics Canada's Daily
     # feed returns no entries to readers, so neither is used; news coverage of them is.) "context" marks them as
@@ -346,6 +362,49 @@ TRUSTED_SOURCES = re.compile(
     r"the canadian|canadian business|investing\.com|marketwatch|axios|the hill$|white house|"
     r"healthy debate|policy options|cmaj|hospital news|the conversation|canadian healthcare network|hospital news|medical post|"
     r"canadian medical association|nursing|healthing|health canada|cihi|statistics canada", re.I)
+
+# Outlet tiers. TOP: wire services, national outlets, the trade press of record and official
+# sources; preferred when several outlets carry the same story. LOW: partisan/opinion sites and
+# enthusiast or aggregator blogs; their stories never alert and show on the page as FYI at most.
+TOP_SOURCES = re.compile(
+    r"reuters|canadian press|associated press|^ap$|ap news|bloomberg|\bcbc\b|radio-canada|globe and mail|\bctv|"
+    r"global news|toronto star|financial post|national post|automotive news|autonews|politico|hill times|"
+    r"ipolitics|la presse|le devoir|wall street journal|new york times|financial times|government of canada|"
+    r"parliament|house of commons|senate of canada|bank of canada|health canada", re.I)
+LOW_SOURCES = re.compile(
+    r"rebel news|true north|western standard|juno news|post millennial|epoch times|blacklock|"
+    r"ford authority|gm authority|mopar insiders|carscoops|autoevolution|carbuzz|hotcars|motorbiscuit|"
+    r"torque news|the truth about cars|blogto|narcity|daily hive|yahoo|\baol\b|substack|medium\.com", re.I)
+
+
+def outlet_tier(it) -> int:
+    """3 = top, 2 = known/trusted, 1 = unfamiliar, 0 = low."""
+    src = it.get("source") or ""
+    if it.get("official") or TOP_SOURCES.search(src):
+        return 3
+    if LOW_SOURCES.search(src):
+        return 0
+    return 2 if TRUSTED_SOURCES.search(src) else 1
+
+
+def apply_outlet_rules(it, after_ai=False):
+    """Unfamiliar outlets lose a level; low-tier outlets are capped at FYI and never alert."""
+    tier = outlet_tier(it)
+    if tier == 0:
+        it["lowtier"] = it["no_alert"] = True
+        it["level"] = 2 if it["level"] >= 3 else 1
+        if not after_ai:
+            it["why"] += ", low-tier outlet"
+    elif tier == 1:
+        it["untrusted"] = True
+        it["level"] = max(1, it["level"] - 1)
+        if not after_ai:
+            it["why"] += ", unfamiliar outlet"
+
+
+def page_threshold(it) -> int:
+    return 3 if it.get("untrusted") else 2
+
 
 BLOCKED_SOURCES = re.compile(r"openpr|ein presswire|marketscreener|benzinga|globe newswire|"
                              r"pr newswire|accesswire|einnews|newsbreak|msn$", re.I)
@@ -480,6 +539,14 @@ def similar(a: set, b: set) -> float:
     return len(a & b) / len(a | b)
 
 
+def same_story(a: set, b: set) -> bool:
+    """Pre-filter before rating. With Claude available it decides what's a repeat and what's a new
+    development, so only near-identical headlines are dropped here; without it, use the looser word match."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return bool(a and b) and len(a & b) / len(a | b) >= 0.7
+    return similar(a, b) >= SIMILARITY
+
+
 def snippet(item) -> str:
     """The item's summary, if it says more than the headline (Google News summaries usually don't)."""
     d = item.get("desc", "").strip()
@@ -491,7 +558,14 @@ def snippet(item) -> str:
     return d if len(d) <= 220 else d[:217].rsplit(" ", 1)[0] + "…"
 
 
+TOPIC_BY_KEY = {}
+
+
 def classify(item):
+    if item.get("force_topic"):
+        if not TOPIC_BY_KEY:
+            TOPIC_BY_KEY.update({t["key"]: t for t in TOPICS})
+        return TOPIC_BY_KEY.get(item["force_topic"])
     # Headline + summary only: outlet names like "Automotive News Canada" would
     # otherwise make every story from that outlet look Canadian and auto-related.
     text = item["title"] if item.get("title_only") else f"{item['title']} {item['desc']}"
@@ -572,11 +646,21 @@ announcements, committee hearings or consultations, statements by the associatio
 1 = not relevant to that association (wrong country or sector, consumer reviews, lifestyle, spam).
 Judge from the headline and snippet only; don't assume facts beyond them. Several items may cover the \
 same event: rate each on its own.
-Old news: you're told today's date, when each item was published, and the headlines already sent in the \
-last week. Rate 1 if an item covers an event already sent and adds no significant new development (a \
-genuinely new step, such as a decision, a deal, a vote or new numbers, can still rate high). Rate at most 2 if \
-it's a recap, explainer, anniversary or look-back, or reports something that happened well before today \
-(e.g. it refers to last month, last year or an earlier date).
+Ongoing stories: you're told today's date, when each item was published, and the stories already on \
+file (S0, S1, ...) with their latest headlines. For each item:
+- "thread": the number of the on-file story it belongs to, or -1. One story = one ongoing matter, e.g. every \
+article about the possible sale of the Stellantis Brampton plant is one story; "Canada-U.S. trade talks" is one story.
+- "same_as": if it belongs to no on-file story but another item EARLIER in this list is about the same matter, \
+that item's id; otherwise -1.
+- "development": true only if it reports a genuinely new step in the story (a decision, deal, vote, announcement, \
+filing, new numbers) that the on-file headlines don't already cover. False for reaction, commentary, analysis, \
+recaps, or another outlet's version of what's on file. For an item that starts a new story, true.
+- "story": a 2-6 word name for the story (reuse the on-file name when thread >= 0).
+Rate "level" on the item's own news value; being a repeat is expressed by "development": false, not by a low level. \
+Rate at most 2 if it's a recap, explainer, anniversary or look-back, or reports something that happened well \
+before today (e.g. it refers to last month, last year or an earlier date).
+Items from "Parliament (Hansard)" are remarks made in the House or a committee: rate by what was said about the \
+association's issues (a passing mention is 2; substantive debate, testimony or a minister's commitment is 3-4).
 "summary": one or two plain sentences (max 40 words) saying what happened, using only facts in the headline and snippet; never invent numbers, dates or quotes.
 "why": at most 15 words on what it means for that association's members (for CADA: prices, supply, \
 demand, costs, rules for dealers; for HEAL: funding, workforce, access to care, federal policy)."""
@@ -586,13 +670,36 @@ AI_SCHEMA = {
     "properties": {"ratings": {"type": "array", "items": {
         "type": "object",
         "properties": {"id": {"type": "integer"}, "level": {"type": "integer"},
-                       "summary": {"type": "string"}, "why": {"type": "string"}},
-        "required": ["id", "level", "summary", "why"], "additionalProperties": False}}},
+                       "summary": {"type": "string"}, "why": {"type": "string"},
+                       "thread": {"type": "integer"}, "same_as": {"type": "integer"},
+                       "development": {"type": "boolean"}, "story": {"type": "string"}},
+        "required": ["id", "level", "summary", "why", "thread", "same_as", "development", "story"],
+        "additionalProperties": False}}},
     "required": ["ratings"], "additionalProperties": False,
 }
 
 
-def ai_score(items, already_sent=()) -> bool:
+def item_id(it) -> str:
+    return hashlib.sha1((it["link"] or it["title"]).encode()).hexdigest()[:16]
+
+
+def known_stories(news_items, now, days=5, limit=40):
+    """Stories already on the news page, newest first: [{tid, story, titles: [(title, seen)]}]."""
+    by = {}
+    for i in sorted(news_items, key=lambda i: -i["seen"]):
+        if now - i["seen"] > days * 86400:
+            continue
+        g = by.setdefault(i.get("thread") or i["id"], {"tid": i.get("thread") or i["id"], "story": "", "titles": []})
+        g["story"] = g["story"] or i.get("story") or ""
+        if len(g["titles"]) < 3:
+            g["titles"].append((i["title"], i["seen"]))
+    out = list(by.values())[:limit]
+    for g in out:
+        g["story"] = g["story"] or g["titles"][0][0][:60]
+    return out
+
+
+def ai_score(items, already_sent=(), stories=()) -> bool:
     """Set item['level'] / item['why'] using Claude. Returns False if unavailable."""
     if not items or not os.environ.get("ANTHROPIC_API_KEY"):
         return False
@@ -612,8 +719,13 @@ def ai_score(items, already_sent=()) -> bool:
              for i, it in enumerate(items)]
     today = datetime.now().strftime("%A, %B %d, %Y")
     prompt = f"Today is {today}.\n\n"
-    if already_sent:
-        prompt += "Already sent in the last week (newest first):\n" + "\n".join(
+    if stories:
+        prompt += "Stories on file (newest first):\n" + "\n".join(
+            f"S{n}: {g['story']} | " + " | ".join(f"{t} ({ago(ts)})" for t, ts in g["titles"])
+            for n, g in enumerate(stories)) + "\n\n"
+    elif already_sent:
+        prompt += "Headlines already sent in the last week (treat each as a story on file with no number; " \
+                  "use thread -1 and development false for repeats):\n" + "\n".join(
             f"- {t} ({ago(ts)})" for t, ts in already_sent[:40]) + "\n\n"
     prompt += "Rate these headlines:\n" + "\n".join(lines)
     model = os.environ.get("CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
@@ -659,6 +771,23 @@ def ai_score(items, already_sent=()) -> bool:
             items[i]["why"] = r.get("why", "").strip()[:160]
             items[i]["summary"] = r.get("summary", "").strip()[:320]
             items[i]["by_ai"] = True
+            items[i]["development"] = bool(r.get("development", True))
+            items[i]["story"] = (r.get("story") or "").strip()[:60]
+            th, sa = r.get("thread", -1), r.get("same_as", -1)
+            if isinstance(th, int) and 0 <= th < len(stories):
+                items[i]["thread"] = stories[th]["tid"]
+                items[i]["story"] = stories[th]["story"] or items[i]["story"]
+                items[i]["joined"] = True
+            elif isinstance(sa, int) and 0 <= sa < i:
+                items[i]["same_as_idx"] = sa
+    for i, it in enumerate(items):   # resolve "same as an earlier item in this batch"
+        if it.get("by_ai") and not it.get("thread"):
+            sa = it.pop("same_as_idx", None)
+            if sa is not None and items[sa].get("thread"):
+                it["thread"], it["joined"] = items[sa]["thread"], True
+                it["story"] = items[sa].get("story") or it["story"]
+            else:
+                it["thread"] = item_id(it)
     print(f"Claude ({model}) rated {len(ratings)} headlines")
     return True
 
@@ -723,7 +852,8 @@ def load_news(path: str) -> dict:
 def story_record(it, now) -> dict:
     t = it["topic"]
     return {
-        "id": hashlib.sha1((it["link"] or it["title"]).encode()).hexdigest()[:16],
+        "id": item_id(it), "thread": it.get("thread") or item_id(it), "story": it.get("story", ""),
+        "dev": bool(it.get("development", True)),
         "assoc": t["assoc"], "topic": t["label"], "level": it["level"],
         "title": strip_source(it["title"]), "source": it["source"], "link": it["link"],
         "published": int(it["ts"]), "seen": int(now),
@@ -765,7 +895,53 @@ def write_brief(items, now):
         return None
 
 
-def update_news(path, cands, threshold_for_page, now):
+THREAD_SYSTEM = """You group news headlines into ongoing stories for a news page. One story = one ongoing \
+matter (e.g. every article about the possible sale of the Stellantis Brampton plant; or Canada-U.S. trade talks). \
+Return only groups of two or more headlines that are clearly the same matter, each with a 2-6 word name. \
+Don't group headlines that merely share a broad topic."""
+THREAD_SCHEMA = {"type": "object", "properties": {"groups": {"type": "array", "items": {
+    "type": "object", "properties": {"story": {"type": "string"}, "ids": {"type": "array", "items": {"type": "integer"}}},
+    "required": ["story", "ids"], "additionalProperties": False}}}, "required": ["groups"], "additionalProperties": False}
+
+
+def rethread(news) -> int:
+    """Give stories saved before threads existed a thread, using Claude. Returns how many were grouped."""
+    legacy = [i for i in news["items"] if not i.get("thread")]
+    for i in legacy:
+        i["thread"], i["story"], i["dev"] = i["id"], "", True
+    if len(legacy) < 2 or not os.environ.get("ANTHROPIC_API_KEY"):
+        return 0
+    try:
+        import anthropic
+        legacy.sort(key=lambda i: i["seen"])
+        lines = [f"{n}. [{i['assoc']} / {i['topic']}] {i['title']}" for n, i in enumerate(legacy[:200])]
+        resp = anthropic.Anthropic(timeout=90, max_retries=2).beta.messages.create(
+            model=os.environ.get("CLAUDE_MODEL", "").strip() or "claude-opus-5-5", max_tokens=8000,
+            system=THREAD_SYSTEM, messages=[{"role": "user", "content": "Headlines:\n" + "\n".join(lines)}],
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": THREAD_SCHEMA}},
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        if resp.stop_reason in ("refusal", "max_tokens"):
+            return 0
+        groups = json.loads(next(b.text for b in resp.content if b.type == "text"))["groups"]
+    except Exception as e:
+        print(f"rethread: {type(e).__name__}: {e}", file=sys.stderr)
+        return 0
+    grouped, used = 0, set()
+    for g in groups:
+        ids = [n for n in g.get("ids", []) if isinstance(n, int) and 0 <= n < len(legacy) and n not in used]
+        if len(ids) < 2:
+            continue
+        used.update(ids)
+        head = legacy[min(ids)]
+        for k, n in enumerate(sorted(ids)):
+            legacy[n]["thread"], legacy[n]["story"] = head["id"], (g.get("story") or "").strip()[:60]
+            legacy[n]["dev"] = k == 0
+        grouped += len(ids)
+    return grouped
+
+
+def update_news(path, cands, now, force_brief=False):
+    threshold_for_page = page_threshold
     news = load_news(path)
     have = {i["id"] for i in news["items"]}
     added = added_high = 0
@@ -783,7 +959,7 @@ def update_news(path, cands, threshold_for_page, now):
     old = news.get("brief") or {}
     age = now - old.get("at", 0)
     # Refresh the brief hourly when there's news, within 10 min of a HIGH/CRITICAL story.
-    if not old or (added and age >= BRIEF_EVERY_MIN * 60) or (added_high and age >= 600):
+    if force_brief or not old or (added and age >= BRIEF_EVERY_MIN * 60) or (added_high and age >= 600):
         b = write_brief(news["items"], now)
         if b:
             news["brief"] = b
@@ -794,6 +970,7 @@ def update_news(path, cands, threshold_for_page, now):
         json.dump(news, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, path)
     print(f"news page: +{added} stories, {len(news['items'])} kept")
+    return news
 
 
 def backfill(server, topic, feed_override):
@@ -824,30 +1001,33 @@ def backfill(server, topic, feed_override):
             found.append(it)
     for it in found:
         it["level"], it["why"] = rule_score(it)
-        if not it.get("official") and not TRUSTED_SOURCES.search(it["source"] or ""):
-            it["untrusted"] = True
-            it["level"] = max(1, it["level"] - 1)
-            it["why"] += ", unfamiliar outlet"
-    found.sort(key=lambda i: (-i["level"], bool(i.get("untrusted")), -i["ts"]))
+        apply_outlet_rules(it)
+    found.sort(key=lambda i: (-i["level"], -outlet_tier(i), -i["ts"]))
     kept, cands = [], []
     for it in found:  # one story per event, the best-rated version first
         w = story_words(it)
-        if not it.get("track_changes") and any(similar(w, prev) >= SIMILARITY for prev in kept):
+        if not it.get("track_changes") and any(same_story(w, prev) for prev in kept):
             continue
         kept.append(w)
         cands.append(it)
     cands = cands[:240]
-    for i in range(0, len(cands), 40):  # Claude rates and summarises in batches
-        batch = cands[i:i + 40]
-        if ai_score(batch):
-            for it in batch:
-                if it.get("by_ai") and it.get("untrusted"):
-                    it["level"] = max(1, it["level"] - 1)
     news = load_news(path)
+    regrouped = rethread(news)
     have = {i["id"] for i in news["items"]}
+    cands = [it for it in cands if item_id(it) not in have]
+    stories = known_stories(news["items"], now, days=7, limit=60)
+    for i in range(0, len(cands), 40):  # Claude rates, summarises and threads in batches
+        batch = cands[i:i + 40]
+        if ai_score(batch, stories=stories):
+            for it in batch:
+                if it.get("by_ai"):
+                    apply_outlet_rules(it, after_ai=True)
+                    if not it.get("joined"):   # let later batches join stories started in this one
+                        stories.append({"tid": it["thread"], "story": it.get("story") or it["title"][:60],
+                                        "titles": [(strip_source(it["title"]), it["ts"])]})
     added = 0
     for it in cands:
-        if it["level"] < max(2, 3 if it.get("untrusted") else 1):
+        if it["level"] < page_threshold(it):
             continue
         rec = story_record(it, now)
         rec["seen"] = int(min(now, it["ts"]))  # place it on the page when it was published
@@ -865,7 +1045,8 @@ def backfill(server, topic, feed_override):
     with open(path + ".tmp", "w") as f:
         json.dump(news, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(path + ".tmp", path)
-    print(f"backfill: {len(found)} relevant, {len(cands)} distinct, +{added} added to the page")
+    print(f"backfill: {len(found)} relevant, {len(cands)} new and distinct, +{added} added to the page, "
+          f"{regrouped} older stories grouped into threads")
     send(server, topic, "News page updated",
          f"Added {added} stories from the last {int(hours)} hours to the news page. No alerts were sent for them.",
          click="https://ethanlaneday.github.io/news-alerts/", priority=2, tags=["newspaper"])
@@ -890,6 +1071,14 @@ def read_source(src, feed_override):
             it["context"] = src["context"]
         if src.get("track_changes"):
             it["track_changes"] = True
+        if src.get("max_age_hours"):
+            it["max_age"] = src["max_age_hours"]
+        if src.get("parl"):
+            # Feed titles look like "Business of Supply / Jane Doe" or " / Jane Doe".
+            ctx, _, who = it["title"].rpartition(" / ")
+            ctx, who = ctx.strip(), who.strip() or "A speaker"
+            it["title"] = f"In Parliament: {who} on {src['parl']}" + (f" ({ctx})" if ctx else "")
+            it["force_topic"] = src["topic"]
         if src["id"].startswith("feed:"):
             # Only search results end in " - Outlet"; keep direct-feed titles whole
             # (e.g. "C-64 (45-1) - An Act respecting pharmacare").
@@ -1034,7 +1223,7 @@ def main() -> int:
                 continue
             for k in keys:
                 seen[k] = now
-            if src_seeding or t["key"] not in seeded or now - it["ts"] > MAX_AGE_HOURS * 3600:
+            if src_seeding or t["key"] not in seeded or now - it["ts"] > it.get("max_age", MAX_AGE_HOURS) * 3600:
                 continue
             it["topic"] = t
             fresh.append(it)
@@ -1049,25 +1238,19 @@ def main() -> int:
     state["seeded"] = sorted(seeded)
 
     # Score every fresh story, then keep one per event, preferring the most important
-    # story from a known outlet (so a junk site can't "claim" a story first).
-    def untrusted(it):
-        return not it.get("official") and not TRUSTED_SOURCES.search(it["source"] or "")
-
+    # story from the best outlet (so a junk site can't "claim" a story first).
     def threshold(it):
         return max(min_level, 3 if it.get("untrusted") else 1)
 
     for it in fresh:
         it["level"], it["why"] = rule_score(it)
-        if untrusted(it):
-            it["untrusted"] = True
-            it["level"] = max(1, it["level"] - 1)
-            it["why"] += ", unfamiliar outlet"
-    fresh.sort(key=lambda i: (-i["level"], bool(i.get("untrusted")), i["ts"]))
+        apply_outlet_rules(it)
+    fresh.sort(key=lambda i: (-i["level"], -outlet_tier(i), i["ts"]))
     cands, kept = [], []
     for it in fresh:
         w = story_words(it)
         prior = [] if it.get("track_changes") else \
-            [lvl for prev, _, lvl, _ in sent_recent + kept if similar(w, prev) >= SIMILARITY]
+            [lvl for prev, _, lvl, _ in sent_recent + kept if same_story(w, prev)]
         # Same story as one already sent (this week) is old news, unless it's a bigger development.
         if prior and not (it["level"] >= 4 and it["level"] > max(prior)):
             print("  already covered, skipped:", it["title"])
@@ -1075,13 +1258,37 @@ def main() -> int:
         kept.append((w, now, it["level"], strip_source(it["title"])))
         cands.append(it)
 
+    news_path = os.environ.get("NEWS_FILE", "").strip()
     already = [(t, ts) for _, ts, _, t in sorted(sent_recent, key=lambda e: -e[1]) if t]
-    if cands and ai_score(cands[:40], already):
+    stories = known_stories(load_news(news_path)["items"], now) if news_path else []
+    if cands and ai_score(cands[:40], already, stories):
         for it in cands[:40]:
-            if it.get("by_ai") and it.get("untrusted"):
-                it["level"] = max(1, it["level"] - 1)
-    to_send = [it for it in cands if it["level"] >= threshold(it)]
-    sent_recent += [(story_words(it), now, it["level"], strip_source(it["title"])) for it in to_send]
+            if it.get("by_ai"):
+                apply_outlet_rules(it, after_ai=True)
+                # Another article on a story already on file, with nothing new: page only, no alert.
+                if not it.get("development", True) and (it.get("joined") or not stories):
+                    it["no_alert"] = True
+    keep = [it for it in cands if it["level"] >= threshold(it)]
+    to_send = [it for it in keep if not it.get("no_alert")]
+    for it in keep:
+        if it.get("no_alert"):
+            print(f"  page only (no alert): {it['title']}")
+    sent_recent += [(story_words(it), now, it["level"], strip_source(it["title"])) for it in keep]
+
+    # Quiet hours: overnight only CRITICAL alerts go out; the rest wait for the morning brief.
+    local = datetime.now(ZoneInfo(os.environ.get("ALERT_TZ", "").strip() or "America/Toronto"))
+    try:
+        qs, qe = (int(x) % 24 for x in (os.environ.get("QUIET_HOURS", "").strip() or "22-7").split("-"))
+    except ValueError:
+        qs, qe = 22, 7
+    quiet = qs != qe and ((qs <= local.hour or local.hour < qe) if qs > qe else (qs <= local.hour < qe))
+    held = state.setdefault("held", [])
+    if quiet:
+        for it in to_send:
+            if it["level"] < 5:
+                held.append({"assoc": it["topic"]["assoc"], "level": it["level"], "title": strip_source(it["title"])})
+                print(f"  held until morning L{it['level']}: {it['title']}")
+        to_send = [it for it in to_send if it["level"] >= 5]
     for it in cands:
         if it["level"] < threshold(it):
             print(f"  level {it['level']}, not sent: {it['title']} ({it['why']})")
@@ -1108,6 +1315,8 @@ def main() -> int:
         assoc = it["topic"]["assoc"]
         label = it["topic"]["label"] if it["topic"]["label"] != assoc else ""
         meta = " · ".join(x for x in (label, it["source"], when) if x)
+        if it.get("joined") and it.get("story"):
+            meta += f"\nUpdate on: {it['story']}"
         if it.get("by_ai"):
             lines = [meta, it.get("summary", ""), "Why it matters: " + it["why"]]
         else:
@@ -1121,12 +1330,30 @@ def main() -> int:
              "\n".join(f"• {i['topic']['assoc']}: " + strip_source(i["title"]) for i in rest[:8]), priority=2,
              click="https://news.google.com/search?q=CUSMA%20OR%20%22auto%20plant%22%20Canada&hl=en-CA&gl=CA&ceid=CA:en")
 
-    news_path = os.environ.get("NEWS_FILE", "").strip()
+    # Morning brief: once a day when quiet hours end, Claude's brief plus what was held overnight.
+    today = local.date().isoformat()
+    morning = not quiet and state.get("morning_day") != today and local.hour >= qe \
+        and (local.hour < qe + 5 or bool(held))
+    news = None
     if news_path:
         try:  # the page shows everything rated FYI or higher, whatever MIN_LEVEL is
-            update_news(news_path, cands, lambda it: max(2, 3 if it.get("untrusted") else 1), now)
+            news = update_news(news_path, cands, now, force_brief=morning)
         except Exception as e:
             print(f"news page update failed: {type(e).__name__}: {e}", file=sys.stderr)
+    if morning:
+        brief = (news or {}).get("brief") or {}
+        parts = [f"{a}: {brief[a]}" for a in ("CADA", "HEAL") if brief.get(a) and now - brief.get("at", 0) < 3 * 3600]
+        if held:
+            top = sorted(held, key=lambda h: -h["level"])
+            parts.append("Overnight:\n" + "\n".join(
+                f"• {h['assoc']} · {LEVELS[h['level']][0]} · {h['title']}" for h in top[:8])
+                + (f"\n+{len(top) - 8} more in the app" if len(top) > 8 else ""))
+        if parts:
+            send(server, topic, "Morning brief" + (f" · {len(held)} overnight" if held else ""),
+                 "\n\n".join(parts), click="https://ethanlaneday.github.io/news-alerts/", priority=3, tags=["sunrise"])
+            print(f"morning brief sent ({len(held)} held stories)")
+        state["held"] = []
+        state["morning_day"] = today
 
     cutoff = now - KEEP_DAYS * 86400
     state["seen"] = {k: v for k, v in seen.items() if v >= cutoff}
