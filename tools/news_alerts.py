@@ -1126,6 +1126,16 @@ def safe_icons(news, path, now):
         print(f"outlet icons failed: {e}", file=sys.stderr)
 
 
+def safe_parliament(path, now):
+    if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
+        return
+    try:
+        import parliament
+        parliament.update(path, now, sys.modules[__name__])
+    except Exception as e:  # the Parliament view is extra; never let it stop the news
+        print(f"parliament failed: {e}", file=sys.stderr)
+
+
 def update_news(path, cands, now, force_brief=False):
     threshold_for_page = page_threshold
     news = load_news(path)
@@ -1151,6 +1161,7 @@ def update_news(path, cands, now, force_brief=False):
             news["brief"] = b
     merge_taps(news)
     safe_icons(news, path, now)
+    safe_parliament(path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
@@ -1230,6 +1241,7 @@ def backfill(server, topic, feed_override):
         news["brief"] = b
     merge_taps(news)
     safe_icons(news, path, now)
+    safe_parliament(path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
@@ -1293,6 +1305,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "parliament":
+        import parliament
+        return parliament.debug(sys.modules[__name__])
     for u in urls.split():
         try:
             browser = u.startswith("b:")  # "b:https://…" = ask the way a browser would
