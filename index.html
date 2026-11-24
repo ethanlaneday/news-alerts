@@ -48,11 +48,15 @@ header { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; 
 h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
 .meta { margin: 0; font-size: 13px; color: var(--muted); }
 .meta strong { color: var(--text); }
-.refresh { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--chip-line);
-  background: var(--card); color: var(--body); display: grid; place-items: center; cursor: pointer; }
-.refresh svg { width: 20px; height: 20px; }
-.refresh.spin svg { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Pull down from the top of the page to refresh. */
+html { overscroll-behavior-y: contain; }
+.ptr { position: fixed; z-index: 20; left: 50%; top: calc(env(safe-area-inset-top) + 10px); width: 40px; height: 40px; margin-left: -20px;
+  border-radius: 999px; background: var(--card); border: 1px solid var(--chip-line); box-shadow: 0 2px 8px rgba(16,24,40,0.16);
+  display: grid; place-items: center; color: var(--muted); opacity: 0; transform: translateY(-70px); pointer-events: none; }
+.ptr.settle { transition: transform .2s ease, opacity .2s ease; }
+.ptr svg { width: 20px; height: 20px; }
+.ptr.ready { color: var(--unread); } .ptr.spin svg { animation: spin .8s linear infinite; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--chip-line);
   background: var(--card); color: var(--body); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; }
@@ -172,6 +176,16 @@ ul.rows .m, ol.tl .m { font-size: 12px; color: var(--muted); } .m .n { color: va
 .story-head .who b.CADA { color: var(--cada-text); } .story-head .who b.HEAL { color: var(--heal-text); }
 .story-head h3 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.22; letter-spacing: -0.01em; }
 .story-head p { margin: 0; font-size: 13px; color: var(--muted); }
+.keys-wrap { padding: 14px 16px 6px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+ol.keys { list-style: none; margin: 0; padding: 0; }
+ol.keys li { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; padding: 7px 0; }
+ol.keys li.part { display: block; padding: 8px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+ol.keys .when { font-size: 12px; font-weight: 600; color: var(--muted); padding-top: 2px; }
+ol.keys .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+ol.keys .t { font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--text); }
+ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(--muted); }
+ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
+.keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -236,13 +250,13 @@ article.unseen { border-color: var(--new-line); }
 </style>
 </head>
 <body>
+<div class="ptr" id="ptr" role="status" aria-live="polite" aria-label="Pull down to refresh">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+</div>
 <div class="wrap">
   <header>
     <div class="top">
       <h1>News</h1>
-      <button class="refresh" id="refresh" type="button" aria-label="Refresh">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-      </button>
     </div>
     <p class="meta" id="meta">Loading…</p>
     <div class="tabs" role="group" aria-label="View" id="tabs"></div>
@@ -376,7 +390,10 @@ article.unseen { border-color: var(--new-line); }
     var map = {}, out = [];
     items.forEach(function (i) {
       var t = i.thread || i.id;
-      if (!map[t]) { map[t] = { tid: t, items: [], story: "" }; out.push(map[t]); }
+      if (!map[t]) { map[t] = { tid: t, items: [], story: "", had: {} }; out.push(map[t]); }
+      var dupe = (i.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + "|" + (i.source || "");
+      if (map[t].had[dupe]) return;   // the same headline from the same outlet, picked up twice
+      map[t].had[dupe] = 1;
       map[t].items.push(i);
       if (i.story && !map[t].story) map[t].story = i.story;
     });
@@ -495,10 +512,41 @@ article.unseen { border-color: var(--new-line); }
     var topic = i.topic !== i.assoc ? i.topic : "";
     var kids;
 
-    if (isBig(t)) {
+    var st = ((state.data || {}).stories || {})[t.tid];   // the story's lasting record, if it has one
+    if (isBig(t) || st) {
       var outlets = {}; t.items.forEach(function (x) { outlets[x.source || "?"] = 1; });
       var latest = Math.max.apply(null, t.items.map(function (x) { return x.seen; }));
-      var shown = isOpen ? t.rest : t.rest.slice(0, 3);
+      // Once a story has keystones, older articles they already cover are tucked away.
+      var dig = {}; (st ? st.digested || [] : []).forEach(function (id) { dig[id] = 1; });
+      var cut = Date.now() / 1000 - 2 * 86400;
+      var recent = st ? t.rest.filter(function (x) { return !dig[x.id] || x.seen > cut || state.newIds[x.id]; }) : t.rest;
+      var firstFew = recent.slice(0, 3);
+      var shown = isOpen ? t.rest : firstFew;
+      var keyBox = null;
+      if (st) {
+        var kOpen = !!state.open[t.tid + ":keys"], keys = kOpen ? st.keys : st.keys.slice(0, 4), lastPart = null;
+        var kl = el("ol", { class: "keys" });
+        var parts = (st.parts || []).length > 1;
+        if (parts) keys = keys.slice().sort(function (a, b) { return st.parts.indexOf(a.part) - st.parts.indexOf(b.part) || (a.date < b.date ? 1 : -1); });
+        keys.forEach(function (k) {
+          if (parts && k.part !== lastPart) { lastPart = k.part; kl.appendChild(el("li", { class: "part", text: k.part.toUpperCase() })); }
+          var d = k.date.split("-"), when = new Date(+d[0], +d[1] - 1, +d[2]).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+          var src = el("span", { class: "m" });
+          (k.src || []).forEach(function (x, n) {
+            if (n) src.appendChild(document.createTextNode(" · "));
+            src.appendChild(safeLink(x.link) ? el("a", { href: x.link, target: "_blank", rel: "noopener", text: x.source || "Source" }) : document.createTextNode(x.source || ""));
+          });
+          if (k.prov) src.insertBefore(el("b", { class: "prov", text: "UNCONFIRMED · " }), src.firstChild);
+          kl.appendChild(el("li", null, [el("span", { class: "when", text: when }), el("div", { class: "txt" }, [el("span", { class: "t", text: k.text }), src])]));
+        });
+        keyBox = el("div", { class: "keys-wrap" }, [
+          st.stands ? el("div", { class: "whybox" }, [el("span", { text: "WHERE IT STANDS" }), el("span", { text: st.stands })]) : null,
+          el("span", { class: "kicker", text: "KEY DEVELOPMENTS" }), kl,
+          st.keys.length > 4 ? el("button", { type: "button", class: "link-btn", "aria-expanded": String(kOpen),
+            text: kOpen ? "Show fewer" : "Show all " + st.keys.length + " key developments",
+            onclick: function () { state.open[t.tid + ":keys"] = !kOpen; render(); } }) : null
+        ]);
+      }
       var tl = el("ol", { class: "tl" });
       shown.forEach(function (x) {
         var dev = x.dev !== false && x.level >= 3;
@@ -516,17 +564,19 @@ article.unseen { border-color: var(--new-line); }
       kids = [
         el("header", { class: "story-head" }, [
           el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]), lvlPill(i.level)]),
-          el("h3", { text: t.story || i.title }),
-          el("p", { text: t.items.length + " articles · " + Object.keys(outlets).length + " outlets · updated " + ago(latest) })
+          el("h3", { text: (st && st.name) || t.story || i.title }),
+          el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
+            t.items.length + " articles this week · updated " + ago(latest) })
         ]),
+        keyBox,
         el("div", { class: "card-body" }, [
           el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
           el("div", { class: "headline" }, [titleNode(i, getCard, ids)]),
           outletRow(i)
         ].concat(bodyParts(i))),
-        el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: "MORE ON THIS STORY" }), tl]),
-        t.rest.length > 3 ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
-          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - 3) + " more articles"), chevron(isOpen)]) : null
+        shown.length ? el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: st ? "RECENT COVERAGE" : "MORE ON THIS STORY" }), tl]) : null,
+        t.rest.length > firstFew.length ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
+          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - firstFew.length) + (st ? " earlier articles" : " more articles")), chevron(isOpen)]) : null
       ];
     } else {
       var bar = null, rows = null;
@@ -869,8 +919,8 @@ article.unseen { border-color: var(--new-line); }
     refreshParl();
     if (loading) return;
     loading = true;
-    var btn = document.getElementById("refresh");
-    btn.classList.add("spin");
+    var btn = document.getElementById("ptr");
+    btn.classList.add("spin", "settle"); btn.style.opacity = "1"; btn.style.transform = "translateY(0)";
     var started = Date.now();
     Promise.all([getData(0), recentTaps()])
       .then(function (res) {
@@ -897,12 +947,12 @@ article.unseen { border-color: var(--new-line); }
       .catch(function () {
         if (!state.data) {
           var list = document.getElementById("list"); list.textContent = "";
-          list.appendChild(el("p", { class: "error", text: "Couldn't load the news right now. Check your connection and tap refresh." }));
+          list.appendChild(el("p", { class: "error", text: "Couldn't load the news right now. Check your connection and pull down to refresh." }));
           document.getElementById("meta").textContent = "Not updated";
         }
       })
       .then(function () {
-        setTimeout(function () { loading = false; btn.classList.remove("spin"); }, Math.max(0, 600 - (Date.now() - started)));
+        setTimeout(function () { loading = false; btn.classList.remove("spin"); btn.style.opacity = "0"; btn.style.transform = "translateY(-70px)"; }, Math.max(0, 600 - (Date.now() - started)));
       });
   }
 
@@ -910,7 +960,31 @@ article.unseen { border-color: var(--new-line); }
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") refresh();
   });
-  document.getElementById("refresh").addEventListener("click", refresh);
+  // Pull to refresh: drag down from the top of the page, let go past the threshold.
+  (function () {
+    var ptr = document.getElementById("ptr"), startY = null, pull = 0, NEED = 70;
+    function atTop() { return (window.scrollY || document.documentElement.scrollTop || 0) <= 0; }
+    document.addEventListener("touchstart", function (e) {
+      startY = atTop() && !loading && e.touches.length === 1 ? e.touches[0].clientY : null; pull = 0;
+    }, { passive: true });
+    document.addEventListener("touchmove", function (e) {
+      if (startY === null) return;
+      pull = (e.touches[0].clientY - startY) * 0.5;
+      if (pull <= 0 || !atTop() && pull < 10) { pull = 0; ptr.style.opacity = "0"; return; }
+      var y = Math.min(pull, NEED + 20);
+      ptr.classList.remove("settle");
+      ptr.classList.toggle("ready", pull >= NEED);
+      ptr.style.opacity = String(Math.min(1, y / NEED));
+      ptr.style.transform = "translateY(" + (y - 60) + "px) rotate(" + Math.round(y * 3) + "deg)";
+    }, { passive: true });
+    function end() {
+      if (startY === null) return;
+      var go = pull >= NEED; startY = null; pull = 0;
+      ptr.classList.add("settle"); ptr.classList.remove("ready");
+      if (go) refresh(); else { ptr.style.opacity = "0"; ptr.style.transform = "translateY(-70px)"; }
+    }
+    document.addEventListener("touchend", end); document.addEventListener("touchcancel", end);
+  })();
   document.getElementById("q").addEventListener("input", function (e) { state.query = e.target.value; render(); });
   setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
 

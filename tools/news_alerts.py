@@ -653,14 +653,20 @@ Judge from the headline and snippet only; don't assume facts beyond them. Severa
 same event: rate each on its own.
 Ongoing stories: you're told today's date, when each item was published, and the stories already on \
 file (S0, S1, ...) with their latest headlines. For each item:
-- "thread": the number of the on-file story it belongs to, or -1. One story = one ongoing matter, e.g. every \
-article about the possible sale of the Stellantis Brampton plant is one story; "Canada-U.S. trade talks" is one story.
-- "same_as": if it belongs to no on-file story but another item EARLIER in this list is about the same matter, \
-that item's id; otherwise -1.
+- "thread": the number of the on-file story it belongs to, or -1. Be strict. One story = one specific matter: \
+the same main parties and the same thing at stake, e.g. every article about the possible sale of the Stellantis \
+Brampton plant; or the Canada-U.S. negotiations on auto tariffs. Sharing a broad subject (trade, EVs, health \
+funding), a country, a company or a politician is NOT enough: a Canada-China trade deal is not part of the \
+Canada-U.S. tariff talks; Ford's Oakville investment is not part of the Stellantis Brampton sale; a second \
+province's nurse shortage is not part of the first's. Ask: would the on-file headlines and this one be settled by \
+the same decision or event? If not, or if unsure, use -1.
+- "same_as": if it belongs to no on-file story but another item EARLIER in this list is about the same specific \
+matter (same strict test), that item's id; otherwise -1.
 - "development": true only if it reports a genuinely new step in the story (a decision, deal, vote, announcement, \
 filing, new numbers) that the on-file headlines don't already cover. False for reaction, commentary, analysis, \
 recaps, or another outlet's version of what's on file. For an item that starts a new story, true.
-- "story": a 2-6 word name for the story (reuse the on-file name when thread >= 0).
+- "story": a 2-6 word name for the story, specific enough to tell it from its neighbours ("U.S. auto tariff talks", \
+not "Trade talks"); reuse the on-file name when thread >= 0.
 Rate "level" on the item's own news value; being a repeat is expressed by "development": false, not by a low level. \
 Rate at most 2 if it's a recap, explainer, anniversary or look-back, or reports something that happened well \
 before today (e.g. it refers to last month, last year or an earlier date).
@@ -694,7 +700,8 @@ def known_stories(news_items, now, days=5, limit=40):
     for i in sorted(news_items, key=lambda i: -i["seen"]):
         if now - i["seen"] > days * 86400:
             continue
-        g = by.setdefault(i.get("thread") or i["id"], {"tid": i.get("thread") or i["id"], "story": "", "titles": []})
+        g = by.setdefault(i.get("thread") or i["id"], {"tid": i.get("thread") or i["id"], "story": "", "titles": [],
+                                                       "assoc": i.get("assoc", "")})
         g["story"] = g["story"] or i.get("story") or ""
         if len(g["titles"]) < 3:
             g["titles"].append((i["title"], i["seen"]))
@@ -702,6 +709,30 @@ def known_stories(news_items, now, days=5, limit=40):
     for g in out:
         g["story"] = g["story"] or g["titles"][0][0][:60]
     return out
+
+
+# Words too common in this beat to show that two headlines are about the same matter.
+GENERIC_WORDS = set("""canada canadian canadians ottawa federal government governments province provincial ontario quebec
+minister ministers premier prime says said say new news plan plans deal deals talks talk trade tariff tariffs auto autos
+automotive automaker automakers car cars vehicle vehicles electric industry sector health care healthcare system funding
+budget workers jobs year years week month today report reports could would will after over amid with from that this
+their about what how why more than into have has been were was are its his her they them and the for not but""".split())
+
+
+def distinct_words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z][a-z0-9'-]{2,}", text.lower()) if w not in GENERIC_WORDS}
+
+
+def item_text(it) -> str:
+    return f"{strip_source(it['title'])} {snippet(it)}"
+
+
+def fits_story(it, story) -> bool:
+    """A cheap check on Claude's grouping: same association, and at least one distinctive word in common."""
+    if story.get("assoc") and story["assoc"] != it["topic"]["assoc"]:
+        return False
+    theirs = distinct_words(story.get("story", "") + " " + " ".join(t for t, _ in story.get("titles", [])))
+    return bool(distinct_words(item_text(it)) & theirs)
 
 
 def ai_score(items, already_sent=(), stories=()) -> bool:
@@ -779,11 +810,12 @@ def ai_score(items, already_sent=(), stories=()) -> bool:
             items[i]["development"] = bool(r.get("development", True))
             items[i]["story"] = (r.get("story") or "").strip()[:60]
             th, sa = r.get("thread", -1), r.get("same_as", -1)
-            if isinstance(th, int) and 0 <= th < len(stories):
+            if isinstance(th, int) and 0 <= th < len(stories) and fits_story(items[i], stories[th]):
                 items[i]["thread"] = stories[th]["tid"]
                 items[i]["story"] = stories[th]["story"] or items[i]["story"]
                 items[i]["joined"] = True
-            elif isinstance(sa, int) and 0 <= sa < i:
+            elif isinstance(sa, int) and 0 <= sa < i and items[sa]["topic"]["assoc"] == items[i]["topic"]["assoc"] \
+                    and distinct_words(item_text(items[i])) & distinct_words(item_text(items[sa])):
                 items[i]["same_as_idx"] = sa
     for i, it in enumerate(items):   # resolve "same as an earlier item in this batch"
         if it.get("by_ai") and not it.get("thread"):
@@ -1126,6 +1158,22 @@ def safe_icons(news, path, now):
         print(f"outlet icons failed: {e}", file=sys.stderr)
 
 
+def trusted_record(rec) -> bool:
+    """Is this saved story from an outlet good enough to stand behind a lasting fact?"""
+    src = rec.get("source") or ""
+    return outlet_tier({"source": src}) >= 2 or bool(re.match(r"(?i)(parliament|government of canada|bank of canada)", src))
+
+
+def safe_keystones(news, path, now):
+    if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
+        return
+    try:
+        import keystones
+        keystones.update(news, path, now, trusted=trusted_record)
+    except Exception as e:  # never let the daily summaries stop the news
+        print(f"keystones failed: {e}", file=sys.stderr)
+
+
 def safe_parliament(path, now):
     if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
         return
@@ -1160,6 +1208,7 @@ def update_news(path, cands, now, force_brief=False):
         if b:
             news["brief"] = b
     merge_taps(news)
+    safe_keystones(news, path, now)
     safe_icons(news, path, now)
     safe_parliament(path, now)
     news["checked"] = int(now)
@@ -1240,6 +1289,7 @@ def backfill(server, topic, feed_override):
     if b:
         news["brief"] = b
     merge_taps(news)
+    safe_keystones(news, path, now)
     safe_icons(news, path, now)
     safe_parliament(path, now)
     news["checked"] = int(now)
@@ -1305,6 +1355,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "keystones":
+        import keystones
+        return keystones.debug(sys.modules[__name__])
     if urls.strip() == "parliament":
         import parliament
         return parliament.debug(sys.modules[__name__])
@@ -1481,6 +1534,12 @@ def main() -> int:
     news_path = os.environ.get("NEWS_FILE", "").strip()
     already = [(t, ts) for _, ts, _, t in sorted(sent_recent, key=lambda e: -e[1]) if t]
     stories = known_stories(load_news(news_path)["items"], now) if news_path else []
+    if news_path:   # long-running stories that have gone quiet keep their thread
+        try:
+            import keystones
+            stories += keystones.on_file(news_path, now, have={g["tid"] for g in stories})
+        except Exception as e:
+            print(f"keystones on file: {e}", file=sys.stderr)
     if cands and ai_score(cands[:40], already, stories):
         for it in cands[:40]:
             if it.get("by_ai"):
