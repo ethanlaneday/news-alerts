@@ -494,10 +494,12 @@ def parse(xml_bytes: bytes, default_source: str = ""):
         desc = text_of(it, "description") or text_of(it, "summary")
         desc = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(desc)))[:400]
         source = text_of(it, "source") or default_source
+        src_el = child(it, "source")
+        source_url = (src_el.get("url") or "") if src_el is not None else ""
         pub = text_of(it, "pubdate") or text_of(it, "published") or text_of(it, "updated") or text_of(it, "date")
         guid = text_of(it, "guid") or text_of(it, "id") or link
         if title and link:
-            yield {"title": title.strip(), "link": link, "desc": desc, "source": source,
+            yield {"title": title.strip(), "link": link, "desc": desc, "source": source, "source_url": source_url,
                    "ts": parse_time(pub), "guid": guid}
 
 
@@ -857,13 +859,22 @@ def load_news(path: str) -> dict:
     return d
 
 
+def outlet_domain(it) -> str:
+    """The outlet's own site (for its favicon), e.g. 'cbc.ca'. Empty when only an aggregator link is known."""
+    for u in (it.get("source_url"), it.get("link")):
+        host = urllib.parse.urlparse(u or "").netloc.lower().removeprefix("www.")
+        if host and not re.search(r"(^|\.)(google|bing|msn)\.", host):
+            return host
+    return ""
+
+
 def story_record(it, now) -> dict:
     t = it["topic"]
     return {
         "id": item_id(it), "thread": it.get("thread") or item_id(it), "story": it.get("story", ""),
         "dev": bool(it.get("development", True)),
         "assoc": t["assoc"], "topic": t["label"], "level": it["level"],
-        "title": strip_source(it["title"]), "source": it["source"], "link": it["link"],
+        "title": strip_source(it["title"]), "source": it["source"], "link": it["link"], "domain": outlet_domain(it),
         "published": int(it["ts"]), "seen": int(now),
         "summary": (it.get("summary") if it.get("by_ai") else snippet(it)) or "",
         "why": it["why"] if it.get("by_ai") else "",
