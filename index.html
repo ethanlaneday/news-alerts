@@ -74,8 +74,12 @@ section.level { margin-bottom: 20px; }
 /* ---- story cards ---- */
 article.card { padding: 0; gap: 0; border-radius: 16px; overflow: hidden; }
 .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
-.card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.card-top .col { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .card-top .left { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.card-top .right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.kicker-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; }
+.newpill { transition: opacity .25s ease; } .newpill.gone { opacity: 0; }
 .lvl { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
 .lvl.l5 { background: var(--p5-bg); color: var(--p5-fg); } .lvl.l4 { background: var(--p4-bg); color: var(--p4-fg); }
 .lvl.l3 { background: var(--p3-bg); color: var(--p3-fg); } .lvl.l2 { color: var(--p2-fg); box-shadow: inset 0 0 0 1px var(--line); }
@@ -244,9 +248,7 @@ article.unseen { border-color: var(--new-line); }
     saveSeen();
     if (card) {
       var pill = card.querySelector(".newpill");
-      if (pill) { pill.classList.add("done"); pill.textContent = "SEEN"; }
-      var kick = card.querySelector(".kicker .n");
-      if (kick) kick.textContent = " · SEEN";
+      if (pill) { pill.classList.add("gone"); setTimeout(function () { if (pill.parentNode) pill.parentNode.removeChild(pill); }, 300); }
     }
     updateMeta();
   }
@@ -396,7 +398,7 @@ article.unseen { border-color: var(--new-line); }
   }
   function lvlPill(n) { var L = levelOf(n); return el("span", { class: "lvl l" + L.n, text: L.label }); }
   function nicelvl(n) { var L = levelOf(n); return L.n === 2 ? "FYI" : L.label.charAt(0) + L.label.slice(1).toLowerCase(); }
-  function newPill(unseen) { return unseen ? el("span", { class: "newpill", text: "NEW" }) : el("span", { class: "newpill done", text: "SEEN" }); }
+  function newPill(unseen) { return unseen ? el("span", { class: "newpill", text: "NEW" }) : null; }
   function outletRow(i) {
     return el("div", { class: "outlet" }, [outletIcon(i, 22), el("b", { text: outletName(i) }), el("span", { class: "age", text: "· " + ago(i.published) })]);
   }
@@ -447,7 +449,7 @@ article.unseen { border-color: var(--new-line); }
           el("p", { text: t.items.length + " articles · " + Object.keys(outlets).length + " outlets · updated " + ago(latest) })
         ]),
         el("div", { class: "card-body" }, [
-          el("span", { class: "kicker" }, [document.createTextNode("LATEST"), inNew ? el("span", { class: "n", text: unseen ? " · NEW" : " · SEEN" }) : null]),
+          el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
           el("div", { class: "headline" }, [titleNode(i, getCard, ids)]),
           outletRow(i)
         ].concat(bodyParts(i))),
@@ -481,11 +483,13 @@ article.unseen { border-color: var(--new-line); }
       kids = [
         el("div", { class: "card-body" }, [
           el("div", { class: "card-top" }, [
-            el("div", { class: "left" }, [el("span", { class: "tag " + i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
-            lvlPill(i.level)
+            el("div", { class: "col" }, [
+              el("div", { class: "left" }, [el("span", { class: "tag " + i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
+              outletRow(i)
+            ]),
+            el("div", { class: "right" }, [lvlPill(i.level), inNew ? newPill(unseen) : null])
           ]),
-          el("div", { class: "headline" }, [inNew ? newPill(unseen) : null, titleNode(i, getCard, ids)]),
-          outletRow(i)
+          el("div", { class: "headline" }, [titleNode(i, getCard, ids)])
         ].concat(bodyParts(i))),
         bar, rows
       ];
