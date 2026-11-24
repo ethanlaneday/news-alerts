@@ -50,7 +50,9 @@ record. Never repeat or rephrase an existing keystone.
 - "date" is the day the thing happened (YYYY-MM-DD), not the day it was reported, when the article says so.
 - "part" is the strand of the story it belongs to, 1-3 words (e.g. "Autos", "Steel", "Review timeline"). \
 Reuse an existing part whenever one fits; add a new one only for a genuinely separate strand.
-- "articles" lists the numbers of the new articles that report it. At least one.
+- "articles" lists the numbers of ALL the new articles that report it (up to 6), trusted outlets first. At least one.
+- State the fact itself. Do not name the outlet ("X reports that...") and do not write "unconfirmed" or \
+"reportedly" in the text; confirmation status is tracked separately.
 - If a new keystone makes an existing one obsolete (a deadline moved, a decision reversed, a figure \
 changed), list that in "replaces" with the old keystone's id. Otherwise leave "replaces" empty.
 - Each article is marked "trusted" or "unverified" by its outlet. Cite trusted outlets whenever one reports the \
@@ -161,8 +163,9 @@ def apply(story, fresh, out, now, trusted=lambda a: True):
         if added >= limit:
             break
         text = re.sub(r"\s+", " ", str(prop.get("text") or "")).strip()
+        text = re.sub(r"\s*\((?:unconfirmed|unverified|single)[^)]*\)\s*\.?$", ".", text, flags=re.I).replace("..", ".")
         cited = [fresh[n] for n in dict.fromkeys(prop.get("articles") or [])
-                 if isinstance(n, int) and 0 <= n < len(fresh)][:3]
+                 if isinstance(n, int) and 0 <= n < len(fresh)][:6]
         if not cited or not 20 <= len(text) <= 260:
             continue
         twin = next((k for k in story["keys"] if alike(text, k["text"])), None)
