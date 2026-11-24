@@ -109,6 +109,7 @@ body.parl .news-only { display: none !important; }
 .p-code { padding: 2px 7px; border-radius: 6px; background: var(--chip-on-bg); color: var(--chip-on-fg); font-size: 12px; font-weight: 700; }
 .p-time { flex: none; font-size: 13px; font-weight: 600; }
 .p-title { font-size: 17px; font-weight: 600; line-height: 1.28; color: var(--text); text-decoration: none; }
+.p-why { font-size: 14px; line-height: 1.42; color: var(--body); }
 .p-sub { font-size: 13px; color: var(--muted); line-height: 1.4; }
 .p-note { align-self: flex-start; padding: 3px 9px; border-radius: 999px; background: var(--p4-bg); color: var(--p4-fg); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
 .p-agenda { margin: 0; padding: 0 0 0 16px; font-size: 13px; line-height: 1.45; color: var(--body); }
@@ -711,20 +712,19 @@ article.unseen { border-color: var(--new-line); }
     var meets = (p.meetings || []).filter(show).filter(function (m) { return m.date >= today; });
     var sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "COMMITTEE MEETINGS" }), el("span", { text: "next two weeks" })])]);
     if (!meets.length) sec.appendChild(el("p", { class: "p-sub", style: "margin:0 4px", text: "No meetings posted yet for the committees being watched." }));
-    var lastDay = "";
-    var cards = el("div", { class: "cards" });
-    meets.forEach(function (m) {
-      if (m.date !== lastDay) { lastDay = m.date; cards.appendChild(el("h3", { class: "p-day", text: dayLabel(m.date) })); }
+    // Important and applicable meetings first, then everything else; each group in date order.
+    var pressing = function (m) { return (m.priority === undefined ? (m.topic || m.witness ? 2 : 0) : m.priority) >= 2; };
+    var meetCard = function (m, top) {
       var key = "m:" + m.url, open = !!state.parlOpen[key], agenda = m.agenda || [];
-      var when = clock(m.start) + (m.end ? " – " + clock(m.end) : "");
-      cards.appendChild(el("article", { class: "p-card " + m.assoc + (m.topic || m.witness ? " hot" : "") }, [
+      var when = dayLabel(m.date).split(" · ")[0].replace(/^(\w+)day, /, "$1day ") + (clock(m.start) ? " · " + clock(m.start) + (m.end ? " – " + clock(m.end) : "") : "");
+      return el("article", { class: "p-card " + m.assoc + (top ? " hot" : "") }, [
         el("div", { class: "p-top" }, [
           el("div", { class: "p-who" }, [assocLabel(m.assoc), el("span", { class: "p-code", text: m.code }), el("span", { text: m.committee + " committee" })]),
           parlNewPill(key)
         ]),
         el("span", { class: "p-title", text: m.subject || "Agenda not posted yet" }),
-        el("div", { class: "p-stage" }, [el("b", { text: when || "Time to be confirmed" }), el("span", { text: m.in_camera ? "In camera (closed)" : "Meeting " + m.num })]),
-        m.topic ? el("span", { class: "p-note", text: "TOUCHES " + m.topic.toUpperCase() }) : null,
+        el("div", { class: "p-stage" }, [el("b", { text: when }), el("span", { text: m.in_camera ? "In camera (closed)" : "Meeting " + m.num })]),
+        m.why ? el("span", { class: top ? "p-why" : "p-sub", text: m.why }) : (m.topic ? el("span", { class: "p-note", text: "TOUCHES " + m.topic.toUpperCase() }) : null),
         m.witness ? el("span", { class: "p-note", text: "APPEARING: " + m.witness }) : null,
         open && agenda.length ? el("ul", { class: "p-agenda" }, agenda.map(function (a) { return el("li", { text: a }); })) : null,
         el("div", { class: "p-links" }, [
@@ -732,8 +732,18 @@ article.unseen { border-color: var(--new-line); }
             onclick: function () { state.parlOpen[key] = !open; render(); } }) : null,
           link(m.notice, "Notice"), link(m.webcast, "Webcast")
         ])
-      ]));
-    });
+      ]);
+    };
+    var topM = meets.filter(pressing), restM = meets.filter(function (m) { return !pressing(m); });
+    var cards = el("div", { class: "cards" });
+    if (topM.length) {
+      cards.appendChild(el("h3", { class: "p-day", text: "Worth your attention" }));
+      topM.forEach(function (m) { cards.appendChild(meetCard(m, true)); });
+    }
+    if (restM.length) {
+      cards.appendChild(el("h3", { class: "p-day", text: topM.length ? "Other meetings" : "Nothing pressing · other meetings" }));
+      restM.forEach(function (m) { cards.appendChild(meetCard(m, false)); });
+    }
     sec.appendChild(cards); list.appendChild(sec);
 
     // -- bills, most recent change first
@@ -750,6 +760,7 @@ article.unseen { border-color: var(--new-line); }
           state.parlNew[key] ? el("span", { class: "lvl newpill", style: "background:var(--new-bg);color:var(--new-fg)", text: "NEW STAGE" }) : null
         ]),
         safeLink(b.link) ? el("a", { class: "p-title", href: b.link, target: "_blank", rel: "noopener", text: b.title }) : el("span", { class: "p-title", text: b.title }),
+        b.note ? el("span", { class: "p-why", text: b.note }) : null,
         el("span", { class: "p-sub", text: [b.type, b.sponsor].filter(Boolean).join(" · ") }),
         el("div", { class: "trk", "aria-hidden": "true" }, segs),
         el("div", { class: "trk-l", "aria-hidden": "true" }, [el("span", { text: b.senate ? "SENATE" : "HOUSE" }), el("span", { text: b.senate ? "HOUSE" : "SENATE" }), el("span", { text: "ROYAL ASSENT" })]),

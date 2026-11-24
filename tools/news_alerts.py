@@ -1368,7 +1368,7 @@ def probe(urls):
             req = urllib.request.Request(u, headers={"User-Agent": BROWSER_UA if browser else UA, "Accept": "*/*",
                                                      "Accept-Language": "en-CA,en;q=0.9"})
             with urllib.request.urlopen(req, timeout=25) as resp:
-                body = resp.read(400000)
+                body = resp.read(2000000)
                 text = body.decode("utf-8", "replace")
                 links = sorted(set(re.findall(r'(?:href|src)="([^"]*(?:rss|feed|atom|xml)[^"]*)"', text, re.I)))[:15]
                 print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
@@ -1379,6 +1379,10 @@ def probe(urls):
                     plain = re.sub(r"( \| )+", " | ", plain)
                     at = max(plain.lower().find("notice of meeting", 600), 0)
                     print("   text:", plain[at:at + 3500])
+                mark = os.environ.get("PROBE_FIND", "This enactment")
+                if mark in text:
+                    cut = text[text.find(mark) - 200: text.find(mark) + 1500]
+                    print("   found:", re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", cut))))
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:

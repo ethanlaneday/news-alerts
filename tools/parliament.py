@@ -252,6 +252,170 @@ def read_mentions(na, old, now):
     return rows, {k: v for k, v in people.items() if k in keep}
 
 
+# ---------------------------------------------------------------- notes and priorities
+NOTE_SYSTEM = """You help a government-relations professional in Ottawa who follows two associations.
+CADA: Canada's franchised new-car dealers. Their files: auto trade and tariffs, vehicle and emissions rules, EV \
+policy, taxes on vehicles, consumer, financing, privacy and competition rules that bind dealers, auto plants.
+HEAL: a coalition of national health organizations. Their files: federal health funding, the health workforce, \
+pharmacare and drugs, mental health, health data and AI in health care, public health, medical assistance in \
+dying, the Canada Health Act, seniors' and long-term care.
+
+For each BILL return:
+- "note": one or two plain sentences, 40 words at most, saying what the bill would do and its main points. Use only \
+the title and official summary provided. If there is no summary, describe only what the title states; never invent \
+provisions.
+- "relevance" for the association it is filed under: 2 = directly affects that association's members or files; \
+1 = related and worth knowing; 0 = not really relevant (it matched on a word).
+
+For each committee MEETING return:
+- "priority": 2 = important and applicable: a study squarely on one of the association's files, the association or \
+its member or peer organizations testifying, a minister or senior officials appearing on those files, or \
+clause-by-clause on a relevant bill. 1 = related to the sector but not pressing. 0 = routine or unrelated \
+(committee business, election of a chair, a study on another subject).
+- "assoc": CADA, HEAL, BOTH or NONE.
+- "why": 16 words at most, concrete, saying why it matters (or what it is, for priority 0)."""
+NOTE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "bills": {"type": "array", "items": {
+            "type": "object", "properties": {"n": {"type": "integer"}, "note": {"type": "string"},
+                                             "relevance": {"type": "integer"}},
+            "required": ["n", "note", "relevance"], "additionalProperties": False}},
+        "meetings": {"type": "array", "items": {
+            "type": "object", "properties": {"n": {"type": "integer"}, "priority": {"type": "integer"},
+                                             "assoc": {"type": "string", "enum": ["CADA", "HEAL", "BOTH", "NONE"]},
+                                             "why": {"type": "string"}},
+            "required": ["n", "priority", "assoc", "why"], "additionalProperties": False}},
+    },
+    "required": ["bills", "meetings"], "additionalProperties": False,
+}
+
+
+def bill_summary(na, link_num, session="45-1") -> str:
+    """The official SUMMARY printed at the front of a bill, or '' if it has none."""
+    page = get_page(na, f"https://www.parl.ca/DocumentViewer/en/{session}/bill/{link_num}/first-reading")
+    page = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page)
+    text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", page)))
+    at = text.rfind("SUMMARY")
+    start = text.find("This enactment", at if at >= 0 else 0)
+    if start < 0:
+        return ""
+    body = text[start:start + 2600]
+    for stop in ("TABLE OF PROVISIONS", "Available on the House of Commons website", "RECOMMENDATION", "Preamble",
+                 "His Majesty, by and with", "Her Majesty, by and with"):
+        cut = body.find(stop)
+        if cut > 80:
+            body = body[:cut]
+    return body.strip()[:1800]
+
+
+def bill_sponsor(na, num, session="45-1") -> str:
+    b = get_json(na, f"{API}/bills/{session}/{num}/?format=json")
+    url = b.get("sponsor_politician_url") or ""
+    if not url:
+        return ""
+    p = get_json(na, f"{API}{url}?format=json")
+    cur = next((x for x in p.get("memberships", []) if not x.get("end_date")), None)
+    role = ((cur or {}).get("label") or {}).get("en") or ""
+    return (p.get("name") or "") + (f" ({role})" if role else "")
+
+
+def ask_notes(bills, meetings):
+    """Claude's notes for these bills and priorities for these meetings, or None."""
+    if not os.environ.get("ANTHROPIC_API_KEY") or not (bills or meetings):
+        return None
+    import anthropic
+    lines = ["BILLS:"] + [
+        f"{n}. [{b['assoc']}] {b['num']} - {b['title']}" + (f" ({b['long']})" if b.get("long") else "")
+        + f"\n   Official summary: {b.get('summary') or '(none available)'}" for n, b in enumerate(bills)]
+    lines += ["", "MEETINGS:"] + [
+        f"{n}. {m['committee']} committee ({m['code']}), {m['date']}: {m.get('subject') or '(agenda not posted)'}"
+        + (" [in camera]" if m.get("in_camera") else "")
+        + ("\n   Agenda and witnesses: " + "; ".join(m.get("agenda", [])[:18]) if m.get("agenda") else "")
+        for n, m in enumerate(meetings)]
+    model = (os.environ.get("CLAUDE_MODEL") or "").strip() or "claude-opus-5-5"
+    resp = anthropic.Anthropic(timeout=90, max_retries=2).beta.messages.create(
+        model=model, max_tokens=6000, system=NOTE_SYSTEM, messages=[{"role": "user", "content": "\n".join(lines)}],
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": NOTE_SCHEMA}},
+        betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    if resp.stop_reason in ("refusal", "max_tokens"):
+        return None
+    return json.loads(next(b.text for b in resp.content if b.type == "text"))
+
+
+def agenda_key(m) -> str:
+    import hashlib
+    return hashlib.sha1((m.get("subject", "") + "|" + "|".join(m.get("agenda", []))).encode()).hexdigest()[:12]
+
+
+def annotate(na, data, now, asker=None):
+    """Add a plain-language note to each bill and a priority to each meeting, remembering past answers."""
+    notes = data.setdefault("notes", {})
+    fetched = 0
+    for b in data.get("bills", []):
+        c = notes.setdefault("b:" + b["num"], {})
+        if fetched < 8 and ("summary" not in c or (not c["summary"] and now - c.get("sum_at", 0) > 7 * 86400)):
+            fetched += 1
+            try:
+                c["summary"] = bill_summary(na, b["num"])
+            except Exception:
+                c["summary"] = c.get("summary", "")
+            c["sum_at"] = int(now)
+            try:
+                c["sponsor"] = bill_sponsor(na, b["num"])
+            except Exception:
+                c.setdefault("sponsor", "")
+    need_b = [b for b in data.get("bills", [])
+              if "summary" in notes["b:" + b["num"]] and (
+                  not notes["b:" + b["num"]].get("note")
+                  or (notes["b:" + b["num"]].get("from") == "title" and notes["b:" + b["num"]]["summary"]))][:12]
+    for b in need_b:
+        b["summary"] = notes["b:" + b["num"]]["summary"]
+    need_m = [m for m in data.get("meetings", [])
+              if notes.get("m:" + m["url"], {}).get("key") != agenda_key(m)][:15]
+    try:
+        out = (asker or ask_notes)(need_b, need_m)
+    except Exception as e:
+        print(f"parliament notes: {type(e).__name__}: {e}")
+        out = None
+    if out:
+        for r in out.get("bills", []):
+            if isinstance(r.get("n"), int) and 0 <= r["n"] < len(need_b):
+                b = need_b[r["n"]]
+                notes["b:" + b["num"]].update({
+                    "note": re.sub(r"\s+", " ", str(r.get("note") or "")).strip()[:320],
+                    "rel": max(0, min(2, int(r.get("relevance", 1)))),
+                    "from": "summary" if b.get("summary") else "title"})
+        for r in out.get("meetings", []):
+            if isinstance(r.get("n"), int) and 0 <= r["n"] < len(need_m):
+                m = need_m[r["n"]]
+                notes["m:" + m["url"]] = {"key": agenda_key(m), "priority": max(0, min(2, int(r.get("priority", 0)))),
+                                          "assoc": r.get("assoc", "NONE"),
+                                          "why": re.sub(r"\s+", " ", str(r.get("why") or "")).strip()[:140], "at": int(now)}
+    kept = []
+    for b in data.get("bills", []):
+        b.pop("summary", None)
+        c = notes.get("b:" + b["num"], {})
+        b["note"] = c.get("note", "")
+        if c.get("sponsor") and not b.get("sponsor"):
+            b["sponsor"] = c["sponsor"]
+        if c.get("rel") == 0 and b["num"] not in TRACK_BILLS:
+            continue   # matched on a word, but not really one of ours
+        kept.append(b)
+    data["bills"] = kept
+    data["backlog"] = any(not b["note"] for b in kept)
+    for m in data.get("meetings", []):
+        c = notes.get("m:" + m["url"], {})
+        if c.get("key") == agenda_key(m):
+            m["priority"], m["why"] = c["priority"], c["why"]
+            if c["assoc"] in ("CADA", "HEAL", "BOTH"):
+                m["assoc"] = c["assoc"]
+        else:   # no judgment yet: fall back to the word matches
+            m["priority"], m["why"] = (2 if m.get("topic") or m.get("witness") else 0), ""
+    live = {"b:" + b["num"] for b in data.get("bills", [])} | {"m:" + m["url"] for m in data.get("meetings", [])}
+    data["notes"] = {k: v for k, v in notes.items() if k in live or (k.startswith("b:") and v.get("rel") == 0)}
+
+
 # ---------------------------------------------------------------- all together
 def update(news_path, now, na, force=False):
     path = os.path.join(os.path.dirname(news_path) or ".", "parliament.json")
@@ -260,7 +424,8 @@ def update(news_path, now, na, force=False):
             old = json.load(f)
     except Exception:
         old = {}
-    if not force and now - old.get("at", 0) < REFRESH_MIN * 60:
+    # Catch up faster while some bills still lack their note.
+    if not force and now - old.get("at", 0) < (10 if old.get("backlog") else REFRESH_MIN) * 60:
         return old
     new = dict(old)
     notes = []
@@ -273,6 +438,10 @@ def update(news_path, now, na, force=False):
             notes.append(f"{len(got[name])} {name}")
         except Exception as e:  # keep the last good copy of that list
             notes.append(f"{name} failed ({type(e).__name__}: {e})")
+    try:
+        annotate(na, new, now)
+    except Exception as e:
+        notes.append(f"notes failed ({type(e).__name__}: {e})")
     new["at"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
@@ -286,10 +455,10 @@ def debug(na):
     """Run once into a scratch folder and print a short sample (used to check the sources from the runner)."""
     import tempfile
     d = update(os.path.join(tempfile.mkdtemp(), "news.json"), time.time(), na, force=True)
-    for b in d.get("bills", [])[:40]:
-        print(f"BILL {b['num']} [{b['assoc']}/{b['topic']}] step {b['done']}/7 | {b['status']} | {b['title'][:60]}")
+    for b in d.get("bills", [])[:14]:
+        print(f"BILL {b['num']} [{b['assoc']}/{b['topic']}] step {b['done']}/7 | {b['status']} | {b['title'][:50]} | {b.get('sponsor', '')[:40]}\n      note: {b.get('note', '')}")
     for m in d.get("meetings", [])[:8]:
-        print(f"MEET {m['date']} {m.get('start')} {m['code']} [{m['assoc']}/{m['topic']}] {m.get('subject', '')[:70]!r} +{len(m.get('agenda', []))} | {m.get('witness', '')[:50]}")
+        print(f"MEET {m['date']} {m.get('start')} {m['code']} [{m['assoc']}/{m['topic']}] {m.get('subject', '')[:70]!r} +{len(m.get('agenda', []))} | P{m.get('priority')} {m.get('why', '')}")
     for m in d.get("mentions", [])[:4]:
         print(f"SAID {m['who']} | {m['role']} | {m['where']} | {m['about'][:40]} | {m['quote'][:90]}")
     return 0
