@@ -19,8 +19,11 @@
 :root {
   --bg: #F4F4F2; --card: #FFFFFF; --line: #E4E4E0; --text: #101828; --body: #344054; --muted: #5D6B7E;
   --chip-on-bg: #1D2939; --chip-on-fg: #FFFFFF; --chip-line: #D0D5DD;
-  --crit: #B42318; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
-  --cada-bg: #DBEAFE; --cada-fg: #1E40AF; --heal-bg: #CCFBF1; --heal-fg: #115E59;
+  --crit: #D92D20; --high: #B54708; --note: #475467; --fyi: #5D6B7E; --unread: #2563EB;
+  --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF; --cada-text: #A50E26; --heal-text: #0B5F58;
+  --p5-bg: #D92D20; --p5-fg: #FFFFFF; --p4-bg: #FEF0C7; --p4-fg: #93370D; --p3-bg: #EAECF0; --p3-fg: #344054; --p2-fg: #5D6B7E;
+  --soft: #F4F4F2; --foot: #FAFAF8;
+  --o5: #D92D20; --o4: #DC6803; --o3: #98A2B3; --o2: #E4E4E0;
   --new-line: #93C5FD; --new-bg: #2563EB; --new-fg: #FFFFFF;
 }
 @media (prefers-color-scheme: dark) {
@@ -28,7 +31,10 @@
     --bg: #111315; --card: #1A1D21; --line: #2A2F35; --text: #F2F4F7; --body: #D0D5DD; --muted: #98A2B3;
     --chip-on-bg: #F2F4F7; --chip-on-fg: #111315; --chip-line: #3A4049;
     --crit: #F97066; --high: #FDB022; --note: #B9C0CB; --fyi: #98A2B3; --unread: #60A5FA;
-    --cada-bg: #1E3A8A; --cada-fg: #DBEAFE; --heal-bg: #134E4A; --heal-fg: #CCFBF1;
+    --cada: #C8102E; --heal: #0F766E; --on-assoc: #FFFFFF; --cada-text: #FF7A8C; --heal-text: #2DD4BF;
+    --p5-bg: #D92D20; --p5-fg: #FFFFFF; --p4-bg: #7A2E0E; --p4-fg: #FEF0C7; --p3-bg: #2A2F35; --p3-fg: #D0D5DD; --p2-fg: #98A2B3;
+    --soft: #23272C; --foot: #1F2327;
+    --o5: #F04438; --o4: #FDB022; --o3: #667085; --o2: #2A2F35;
     --new-line: #1D4ED8; --new-bg: #3B82F6; --new-fg: #0B1220;
   }
 }
@@ -56,15 +62,87 @@ h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
 .brief p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: var(--body); }
 .brief.clamped p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .brief .link-btn { min-height: 36px; margin-top: 2px; }
-.tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
-.tag.CADA { background: var(--cada-bg); color: var(--cada-fg); }
-.tag.HEAL { background: var(--heal-bg); color: var(--heal-fg); }
+.tag { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; color: var(--on-assoc); }
+.tag.CADA { background: var(--cada); }
+.tag.HEAL { background: var(--heal); }
+.chip.CADA[aria-pressed="true"] { background: var(--cada); border-color: var(--cada); color: var(--on-assoc); }
+.chip.HEAL[aria-pressed="true"] { background: var(--heal); border-color: var(--heal); color: var(--on-assoc); }
 section.level { margin-bottom: 20px; }
 .lvl-head { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
 .lvl-head .dot { width: 10px; height: 10px; border-radius: 999px; }
 .lvl-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
 .lvl-head .count { font-size: 12px; color: var(--muted); }
-.cards { display: flex; flex-direction: column; gap: 8px; }
+.cards { display: flex; flex-direction: column; gap: 10px; }
+/* ---- story cards ---- */
+article.card { position: relative; padding: 0 0 0 7px; gap: 0; border-radius: 16px; overflow: hidden; border: 2px solid var(--o2); }
+/* Left rail = which association. Outline = how important: red critical, amber high, grey notable. */
+article.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; }
+article.card.a-CADA::before { background: var(--cada); } article.card.a-HEAL::before { background: var(--heal); }
+article.card.lv5 { border-color: var(--o5); } article.card.lv4 { border-color: var(--o4); }
+article.card.lv3 { border-color: var(--o3); } article.card.lv2 { border-color: var(--o2); }
+article.card.unseen { border-color: var(--o2); }
+article.card.unseen.lv5 { border-color: var(--o5); } article.card.unseen.lv4 { border-color: var(--o4); }
+article.card.unseen.lv3 { border-color: var(--o3); }
+.card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
+.card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.card-top .col { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.card-top .left { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.card-top .right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.kicker-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; }
+.newpill { transition: opacity .25s ease; } .newpill.gone { opacity: 0; }
+.lvl { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+.lvl.l5 { background: var(--p5-bg); color: var(--p5-fg); } .lvl.l4 { background: var(--p4-bg); color: var(--p4-fg); }
+.lvl.l3 { background: var(--p3-bg); color: var(--p3-fg); } .lvl.l2 { color: var(--p2-fg); box-shadow: inset 0 0 0 1px var(--line); }
+.outlet { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--muted); }
+.outlet b { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.outlet .age { flex: none; }
+.oi { position: relative; flex: none; display: grid; place-items: center; border-radius: 6px; overflow: hidden;
+  color: #FFFFFF; font-weight: 700; line-height: 1; }
+.oi img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #FFFFFF; display: none; }
+.oi.has-img img { display: block; }
+.card .headline a, .card .headline .t { font-size: 18px; font-weight: 600; line-height: 1.28; letter-spacing: -0.01em; color: var(--text); text-decoration: none; }
+.whybox { background: var(--soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.whybox span:first-child { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.whybox span:last-child { font-size: 13px; line-height: 1.4; color: var(--text); }
+.thread-bar { width: 100%; min-height: 52px; padding: 0 16px; border: none; border-top: 1px solid var(--line); background: var(--foot);
+  display: flex; align-items: center; gap: 10px; font-family: inherit; cursor: pointer; text-align: left; color: var(--text); }
+.thread-bar .label { flex: 1; font-size: 14px; font-weight: 600; }
+.thread-bar .stack { display: flex; } .thread-bar .stack .oi { box-shadow: 0 0 0 2px var(--foot); } .thread-bar .stack .oi + .oi { margin-left: -6px; }
+.thread-bar svg, .more-bar svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.badge-new { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--new-bg); color: var(--new-fg); font-size: 11px; font-weight: 700; }
+ul.rows { list-style: none; margin: 0; padding: 0 16px; background: var(--foot); }
+ul.rows li { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+ul.rows .txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+ul.rows a, ul.rows .t { font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text); text-decoration: none; }
+ul.rows li.seen a, ul.rows li.seen .t { font-weight: 500; color: var(--body); }
+ul.rows .m, ol.tl .m { font-size: 12px; color: var(--muted); } .m .n { color: var(--unread); font-weight: 700; }
+/* big ongoing story */
+.story-head { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+.story-head .row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.story-head .who { display: flex; align-items: baseline; gap: 7px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.story-head .who b { font-size: 14px; font-weight: 800; letter-spacing: 0.07em; }
+.story-head .who b.CADA { color: var(--cada-text); } .story-head .who b.HEAL { color: var(--heal-text); }
+.story-head h3 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.22; letter-spacing: -0.01em; }
+.story-head p { margin: 0; font-size: 13px; color: var(--muted); }
+.kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
+.kicker .n { color: var(--unread); }
+.tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
+.tl-wrap .kicker { display: block; margin: 12px 0 2px; }
+ol.tl { list-style: none; margin: 0; padding: 0; }
+ol.tl li { display: grid; grid-template-columns: 38px 14px minmax(0, 1fr); gap: 8px; padding: 9px 0; }
+ol.tl .when { font-size: 12px; color: var(--muted); padding-top: 2px; }
+ol.tl .rail { display: flex; flex-direction: column; align-items: center; }
+ol.tl .dot { width: 10px; height: 10px; margin-top: 5px; border-radius: 999px; background: var(--text); }
+ol.tl .dot.hollow { background: var(--card); box-shadow: inset 0 0 0 2px var(--muted); }
+ol.tl .line { flex: 1; width: 2px; margin-top: 4px; background: var(--line); }
+ol.tl li:last-child .line { display: none; }
+ol.tl .txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+ol.tl a, ol.tl .t { font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text); text-decoration: none; }
+ol.tl li.minor a, ol.tl li.minor .t { font-weight: 500; color: var(--body); }
+ol.tl .m { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.m .one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.more-bar { width: 100%; min-height: 48px; border: none; border-top: 1px solid var(--line); background: var(--foot); color: var(--text);
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
 article { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
   display: flex; flex-direction: column; gap: 6px; }
 .info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
@@ -180,7 +258,7 @@ article.unseen { border-color: var(--new-line); }
     saveSeen();
     if (card) {
       var pill = card.querySelector(".newpill");
-      if (pill) { pill.classList.add("done"); pill.textContent = "SEEN"; }
+      if (pill) { pill.classList.add("gone"); setTimeout(function () { if (pill.parentNode) pill.parentNode.removeChild(pill); }, 300); }
     }
     updateMeta();
   }
@@ -219,7 +297,7 @@ article.unseen { border-color: var(--new-line); }
     container.textContent = "";
     options.forEach(function (o) {
       container.appendChild(el("button", {
-        type: "button", class: "chip", "aria-pressed": String(o.key === current),
+        type: "button", class: "chip" + (o.cls ? " " + o.cls : ""), "aria-pressed": String(o.key === current),
         text: o.label + (o.count !== undefined ? " · " + o.count : ""),
         onclick: function () { onPick(o.key); }
       }));
@@ -282,46 +360,151 @@ article.unseen { border-color: var(--new-line); }
     return a;
   }
 
+  // ---- Outlet icons: the outlet's own favicon, with coloured initials until (or unless) it loads.
+  var DOMAINS = { "cbc": "cbc.ca", "cbc news": "cbc.ca", "cbc windsor": "cbc.ca", "ctv news": "ctvnews.ca", "cp24": "cp24.com",
+    "global news": "globalnews.ca", "the globe and mail": "theglobeandmail.com", "toronto star": "thestar.com",
+    "financial post": "financialpost.com", "national post": "nationalpost.com", "windsor star": "windsorstar.com",
+    "automotive news": "autonews.com", "automotive news canada": "autonews.com", "ipolitics": "ipolitics.ca",
+    "politico": "politico.com", "the hill times": "hilltimes.com", "reuters": "reuters.com", "bloomberg": "bloomberg.com",
+    "the canadian press": "thecanadianpress.com", "hospital news": "hospitalnews.com", "policy options": "policyoptions.irpp.org",
+    "electric autonomy canada": "electricautonomy.ca", "canadian auto dealer": "canadianautodealer.ca", "driving.ca": "driving.ca",
+    "the conversation canada": "theconversation.com", "government of canada": "canada.ca", "bank of canada": "bankofcanada.ca",
+    "parliament (hansard)": "ourcommons.ca", "parliament of canada (legisinfo)": "parl.ca", "toronto sun": "torontosun.com",
+    "am 800 cklw": "iheartradio.ca", "national newswatch": "nationalnewswatch.com", "cpac": "cpac.ca" };
+  var HUES = ["#1D2939", "#175CD3", "#067647", "#6941C6", "#B54708", "#0E7090", "#9E165F", "#475467"];
+  function outletIcon(i, size) {
+    var name = i.source || "News";
+    var words = name.replace(/^the\s+/i, "").split(/[\s.\-]+/).filter(Boolean);
+    var initials = (words.length > 1 ? words[0].charAt(0) + words[1].charAt(0) : name.slice(0, 2)).toUpperCase();
+    var hash = 0; for (var k = 0; k < name.length; k++) hash = (hash * 31 + name.charCodeAt(k)) >>> 0;
+    var box = el("span", { class: "oi", "aria-hidden": "true",
+      style: "width:" + size + "px;height:" + size + "px;font-size:" + Math.max(7, Math.round(size * 0.4)) + "px;background:" + HUES[hash % HUES.length],
+      text: initials });
+    var domain = i.domain || DOMAINS[name.toLowerCase()];
+    if (domain && /^[a-z0-9.\-]+$/.test(domain)) {
+      var img = el("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer",
+        src: "https://www.google.com/s2/favicons?sz=64&domain=" + encodeURIComponent(domain) });
+      img.addEventListener("load", function () { if (img.naturalWidth > 16) box.classList.add("has-img"); });
+      box.appendChild(img);
+    }
+    return box;
+  }
+  // "The Hub | More Signal. Less Noise." -> "The Hub"
+  function outletName(i) { return ((i.source || "News").split(/\s[|–—-]\s/)[0] || "News").trim(); }
+  function agoShort(sec) {
+    var m = Math.max(0, Math.round((Date.now() / 1000 - sec) / 60));
+    if (m < 60) return m + "m";
+    var h = Math.round(m / 60);
+    return h < 24 ? h + "h" : Math.round(h / 24) + "d";
+  }
+  function chevron(up) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2.4"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", up ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"); svg.appendChild(p);
+    return svg;
+  }
+  function lvlPill(n) { var L = levelOf(n); return el("span", { class: "lvl l" + L.n, text: L.label }); }
+  function nicelvl(n) { var L = levelOf(n); return L.n === 2 ? "FYI" : L.label.charAt(0) + L.label.slice(1).toLowerCase(); }
+  function newPill(unseen) { return unseen ? el("span", { class: "newpill", text: "NEW" }) : null; }
+  function outletRow(i) {
+    return el("div", { class: "outlet" }, [outletIcon(i, 22), el("b", { text: outletName(i) }), el("span", { class: "age", text: "· " + ago(i.published) })]);
+  }
+  function bodyParts(i) {
+    return [
+      i.summary ? el("p", { class: "summary", text: i.summary }) : null,
+      i.why ? el("div", { class: "whybox" }, [el("span", { text: "WHY IT MATTERS" }), el("span", { text: i.why })]) : null,
+      !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null
+    ];
+  }
+  // A story gets the big treatment when it's ongoing and important: several articles and a HIGH/CRITICAL
+  // lead, or simply a lot of coverage.
+  function isBig(t) { return t.items.length >= 3 && (t.lead.level >= 4 || t.items.length >= 5); }
+
   function makeCard(t, inNew) {
-    var i = t.lead, L = levelOf(i.level), card;
+    var i = t.lead, card;
     var ids = t.items.map(function (x) { return x.id; }).join(",");
     var unseen = t.items.some(function (x) { return !state.seenIds[x.id]; });
-    var info = [i.topic !== i.assoc ? i.topic : null, i.source, ago(i.published)].filter(Boolean).join(" · ");
-    var infoRow = [el("span", { class: "tag " + i.assoc, text: i.assoc })];
-    if (inNew) infoRow.push(el("span", { text: L.label, style: "font-weight:700;letter-spacing:.06em;color:" + L.color }));
-    infoRow.push(el("span", { text: info }));
-    var head = [titleNode(i, function () { return card; }, ids)];
-    if (inNew) head.unshift(unseen ? el("span", { class: "newpill", text: "NEW" }) : el("span", { class: "newpill done", text: "SEEN" }));
+    var getCard = function () { return card; };
+    var isOpen = !!state.open[t.tid];
+    var toggle = function () { state.open[t.tid] = !isOpen; render(); };
+    var newRest = t.rest.filter(function (x) { return state.newIds[x.id]; }).length;
+    var topic = i.topic !== i.assoc ? i.topic : "";
+    var kids;
 
-    var extra = null, list = null;
-    if (t.rest.length) {
-      var newRest = t.rest.filter(function (x) { return state.newIds[x.id]; }).length;
-      var isOpen = !!state.open[t.tid];
-      var label = isOpen ? "Hide other articles"
-        : (newRest && inNew ? newRest + " more new · " : "") + t.rest.length + " more on this story";
-      extra = el("button", { type: "button", class: "thread-btn", "aria-expanded": String(isOpen), text: label,
-        onclick: function () { state.open[t.tid] = !isOpen; render(); } });
-      if (isOpen) {
-        list = el("ul", { class: "updates" });
+    if (isBig(t)) {
+      var outlets = {}; t.items.forEach(function (x) { outlets[x.source || "?"] = 1; });
+      var latest = Math.max.apply(null, t.items.map(function (x) { return x.seen; }));
+      var shown = isOpen ? t.rest : t.rest.slice(0, 3);
+      var tl = el("ol", { class: "tl" });
+      shown.forEach(function (x) {
+        var dev = x.dev !== false && x.level >= 3;
+        tl.appendChild(el("li", { class: dev ? "" : "minor" }, [
+          el("span", { class: "when", text: agoShort(x.published) }),
+          el("span", { class: "rail", "aria-hidden": "true" }, [el("span", { class: "dot" + (dev ? "" : " hollow") }), el("span", { class: "line" })]),
+          el("div", { class: "txt" }, [
+            titleNode(x, getCard, x.id),
+            el("span", { class: "m" }, [outletIcon(x, 16), el("span", { class: "one" }, [
+              state.newIds[x.id] ? el("span", { class: "n", text: "New · " }) : null,
+              document.createTextNode(outletName(x) + " · " + nicelvl(x.level))])])
+          ])
+        ]));
+      });
+      kids = [
+        el("header", { class: "story-head" }, [
+          el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]), lvlPill(i.level)]),
+          el("h3", { text: t.story || i.title }),
+          el("p", { text: t.items.length + " articles · " + Object.keys(outlets).length + " outlets · updated " + ago(latest) })
+        ]),
+        el("div", { class: "card-body" }, [
+          el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
+          el("div", { class: "headline" }, [titleNode(i, getCard, ids)]),
+          outletRow(i)
+        ].concat(bodyParts(i))),
+        el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: "MORE ON THIS STORY" }), tl]),
+        t.rest.length > 3 ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
+          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - 3) + " more articles"), chevron(isOpen)]) : null
+      ];
+    } else {
+      var bar = null, rows = null;
+      if (t.rest.length) {
+        var seenOutlets = {}, stack = el("span", { class: "stack", "aria-hidden": "true" });
         t.rest.forEach(function (x) {
-          var XL = levelOf(x.level);
-          list.appendChild(el("li", null, [
-            titleNode(x, function () { return card; }, x.id),
-            el("span", { class: "m", text: [state.newIds[x.id] ? "New" : null, XL.n === 2 ? "FYI" : XL.label.charAt(0) + XL.label.slice(1).toLowerCase(),
-              x.source, ago(x.published)].filter(Boolean).join(" · ") })
-          ]));
+          var key = x.source || "?";
+          if (!seenOutlets[key] && Object.keys(seenOutlets).length < 3) { seenOutlets[key] = 1; stack.appendChild(outletIcon(x, 22)); }
         });
+        bar = el("button", { type: "button", class: "thread-bar", "aria-expanded": String(isOpen), onclick: toggle }, [
+          stack, el("span", { class: "label", text: t.rest.length + " more on this story" }),
+          newRest && inNew ? el("span", { class: "badge-new", text: newRest + " new" }) : null, chevron(isOpen)
+        ]);
+        if (isOpen) {
+          rows = el("ul", { class: "rows" });
+          t.rest.forEach(function (x) {
+            rows.appendChild(el("li", { class: state.newIds[x.id] ? "" : "seen" }, [outletIcon(x, 24), el("div", { class: "txt" }, [
+              titleNode(x, getCard, x.id),
+              el("span", { class: "m" }, [state.newIds[x.id] ? el("span", { class: "n", text: "New · " }) : null,
+                document.createTextNode(outletName(x) + " · " + ago(x.published) + " · " + nicelvl(x.level))])
+            ])]));
+          });
+        }
       }
+      kids = [
+        el("div", { class: "card-body" }, [
+          el("div", { class: "card-top" }, [
+            el("div", { class: "col" }, [
+              el("div", { class: "left" }, [el("span", { class: "tag " + i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
+              outletRow(i)
+            ]),
+            el("div", { class: "right" }, [lvlPill(i.level), inNew ? newPill(unseen) : null])
+          ]),
+          el("div", { class: "headline" }, [titleNode(i, getCard, ids)])
+        ].concat(bodyParts(i))),
+        bar, rows
+      ];
     }
-    card = el("article", { class: inNew ? "unseen" : "", "data-ids": ids }, [
-      el("div", { class: "info" }, infoRow),
-      t.story && t.items.length > 1 ? el("div", { class: "story", text: t.story + " · " + t.items.length + " articles" }) : null,
-      el("div", { class: "headline" }, head),
-      i.summary ? el("p", { class: "summary", text: i.summary }) : null,
-      i.why ? el("p", { class: "why" }, [el("strong", { text: "Why it matters: " }), document.createTextNode(i.why)]) : null,
-      !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null,
-      extra, list
-    ]);
+    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids }, kids);
     if (inNew && unseen && watcher) watcher.observe(card);
     return card;
   }
@@ -344,7 +527,7 @@ article.unseen { border-color: var(--new-line); }
 
     function count(a) { return threads(inRange.filter(function (i) { return a === "all" || i.assoc === a; })).length; }
     chips(document.getElementById("assocChips"),
-      [{ key: "all", label: "All", count: count("all") }, { key: "CADA", label: "CADA", count: count("CADA") }, { key: "HEAL", label: "HEAL", count: count("HEAL") }],
+      [{ key: "all", label: "All", count: count("all") }, { key: "CADA", label: "CADA", count: count("CADA"), cls: "CADA" }, { key: "HEAL", label: "HEAL", count: count("HEAL"), cls: "HEAL" }],
       state.assoc, function (k) { state.assoc = k; save("news.assoc", k); render(); });
     var topics = Object.keys(topicCount).sort(function (a, b) { return topicCount[b] - topicCount[a] || a.localeCompare(b); });
     chips(document.getElementById("topicChips"),
