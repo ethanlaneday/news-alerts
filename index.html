@@ -138,6 +138,7 @@ article.unseen { border-color: var(--new-line); }
       headers: { "Accept": "application/vnd.github.raw+json" } },
     { url: "https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/news.json", headers: {} }
   ];
+  var SEEN_TOPIC = "news-seen-57d844c41359b1b3";   // carries only story ids; see tools/news_alerts.py
   var LEVELS = [
     { n: 5, label: "CRITICAL", color: "var(--crit)" },
     { n: 4, label: "HIGH", color: "var(--high)" },
@@ -433,6 +434,27 @@ article.unseen { border-color: var(--new-line); }
     list.appendChild(wrap);
   }
 
+  // ---- Seen sync: stories opened from a notification count as seen here too.
+  function noteTap(id) {   // remember locally and tell the sync channel
+    var t = load("news.tapped", {}); t[id] = 1; save("news.tapped", t);
+    try {
+      return fetch("https://ntfy.sh/" + SEEN_TOPIC, { method: "POST", body: "seen:" + id, keepalive: true })
+        .catch(function () {});
+    } catch (e) { return Promise.resolve(); }
+  }
+  function recentTaps() {  // taps from the last few hours that the data file may not include yet
+    return fetch("https://ntfy.sh/" + SEEN_TOPIC + "/json?poll=1&since=6h", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (txt) {
+        var ids = {};
+        txt.split("\n").forEach(function (line) {
+          try { (String(JSON.parse(line).message || "").match(/\b[0-9a-f]{16}\b/g) || []).forEach(function (id) { ids[id] = 1; }); } catch (e) {}
+        });
+        return ids;
+      })
+      .catch(function () { return {}; });
+  }
+
   var loading = false;
   function getData(i) {
     var src = DATA_URLS[i];
@@ -446,10 +468,13 @@ article.unseen { border-color: var(--new-line); }
     var btn = document.getElementById("refresh");
     btn.classList.add("spin");
     var started = Date.now();
-    getData(0)
-      .then(function (d) {
+    Promise.all([getData(0), recentTaps()])
+      .then(function (res) {
+        var d = res[0], taps = res[1];
         d.items = Array.isArray(d.items) ? d.items : [];
         state.data = d; state.fetchedAt = Date.now() / 1000;
+        Object.keys(d.tapped || {}).forEach(function (id) { taps[id] = 1; });
+        Object.keys(load("news.tapped", {})).forEach(function (id) { taps[id] = 1; });
         if (state.seenIds === null) {
           // First time on this device: treat stories older than a day as already seen,
           // so "New" starts with today's news instead of the whole week.
@@ -458,6 +483,9 @@ article.unseen { border-color: var(--new-line); }
           d.items.forEach(function (i) { if (i.seen < cutoff) state.seenIds[i.id] = 1; });
           saveSeen();
         }
+        var changed = false;
+        d.items.forEach(function (i) { if (taps[i.id] && !state.seenIds[i.id]) { state.seenIds[i.id] = 1; changed = true; } });
+        if (changed) saveSeen();
         state.newIds = {};
         d.items.forEach(function (i) { if (!state.seenIds[i.id]) state.newIds[i.id] = 1; });
         render();
@@ -481,7 +509,30 @@ article.unseen { border-color: var(--new-line); }
   document.getElementById("refresh").addEventListener("click", refresh);
   document.getElementById("q").addEventListener("input", function (e) { state.query = e.target.value; render(); });
   setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
-  refresh();
+
+  // Opened from a notification (?go=<story id>): note it as seen, then go straight to the article.
+  var go = (location.search.match(/[?&]go=([0-9a-f]{16})(?:&|$)/) || [])[1];
+  if (!go) { refresh(); return; }
+  document.getElementById("meta").textContent = "Opening article…";
+  var noted = noteTap(go);
+  var tries = 0;
+  (function find() {
+    getData(0).then(function (d) {
+      var hit = (d.items || []).filter(function (i) { return i.id === go; })[0];
+      var link = hit && safeLink(hit.link);
+      if (link) {
+        // Give the "seen" note a moment to send, then replace this page with the article.
+        return Promise.race([noted, new Promise(function (r) { setTimeout(r, 1200); })])
+          .then(function () { location.replace(link); });
+      }
+      throw new Error("not published yet");
+    }).catch(function () {
+      // The story is published a few seconds after its alert; retry briefly, then show the page.
+      if (++tries < 5) return setTimeout(find, 2000);
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      state.query = ""; refresh();
+    });
+  })();
 })();
 </script>
 </body>

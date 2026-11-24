@@ -827,6 +827,11 @@ def load_state(path: str) -> dict:
 # ------------------------------ news page data -------------------------------
 # Every rated story (not just the ones sent as notifications) is kept for a week in
 # news.json, which the workflow publishes to the "news-data" branch for the news page.
+PAGE_URL = "https://ethanlaneday.github.io/news-alerts/"
+# Tapping an alert opens PAGE_URL?go=<id>: the page notes the story as seen on this small ntfy
+# channel and forwards to the article. Each run collects those notes into news.json ("tapped"),
+# so the news app shows the story as seen on every device. The channel only ever carries story ids.
+SEEN_TOPIC = os.environ.get("SEEN_TOPIC", "").strip() or "news-seen-57d844c41359b1b3"
 NEWS_KEEP_DAYS = 7
 BRIEF_EVERY_MIN = 60   # refresh Claude's "Today in brief" at most this often
 
@@ -943,6 +948,36 @@ def rethread(news) -> int:
     return grouped
 
 
+def fetch_taps() -> dict:
+    """Story ids tapped from notifications in the last few hours: {id: time}."""
+    taps = {}
+    try:
+        raw = fetch(f"https://ntfy.sh/{SEEN_TOPIC}/json?poll=1&since=6h", tries=1).decode("utf-8", "replace")
+    except Exception as e:
+        print(f"seen sync: {type(e).__name__}: {e}", file=sys.stderr)
+        return taps
+    for line in raw.splitlines():
+        try:
+            m = json.loads(line)
+        except ValueError:
+            continue
+        for sid in re.findall(r"\b[0-9a-f]{16}\b", str(m.get("message", ""))):
+            taps[sid] = int(m.get("time") or time.time())
+    return taps
+
+
+def merge_taps(news):
+    if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
+        return
+    ids = {i["id"] for i in news["items"]}
+    tapped = {k: v for k, v in (news.get("tapped") or {}).items() if k in ids}
+    new = {k: v for k, v in fetch_taps().items() if k in ids and k not in tapped}
+    tapped.update(new)
+    news["tapped"] = tapped
+    if new:
+        print(f"seen sync: {len(new)} stories marked seen from notification taps")
+
+
 def update_news(path, cands, now, force_brief=False):
     threshold_for_page = page_threshold
     news = load_news(path)
@@ -966,6 +1001,7 @@ def update_news(path, cands, now, force_brief=False):
         b = write_brief(news["items"], now)
         if b:
             news["brief"] = b
+    merge_taps(news)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
@@ -1043,6 +1079,7 @@ def backfill(server, topic, feed_override):
     b = write_brief(news["items"], now)
     if b:
         news["brief"] = b
+    merge_taps(news)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
@@ -1052,7 +1089,7 @@ def backfill(server, topic, feed_override):
           f"{regrouped} older stories grouped into threads")
     send(server, topic, "News page updated",
          f"Added {added} stories from the last {int(hours)} hours to the news page. No alerts were sent for them.",
-         click="https://ethanlaneday.github.io/news-alerts/", priority=2, tags=["newspaper"])
+         click=PAGE_URL, priority=2, tags=["newspaper"])
     return 0
 
 
@@ -1191,7 +1228,7 @@ def main() -> int:
         for assoc, label in (("CADA", "Trade/CUSMA"), ("HEAL", "Health funding")):
             send(server, topic, f"{assoc} · HIGH · Test alert: what an important {assoc} story looks like",
                  f"{label} · Test · just now\nSignals: test. If this popped up with a sound, alerts are working.",
-                 click="https://ethanlaneday.github.io/news-alerts/", priority=4,
+                 click=PAGE_URL, priority=4,
                  tags=[ASSOCS[assoc]["emoji"], "red_circle"])
         return 0
     if os.environ.get("PROBE", "").strip():
@@ -1287,9 +1324,9 @@ def main() -> int:
     # Quiet hours: overnight only CRITICAL alerts go out; the rest wait for the morning brief.
     local = datetime.now(ZoneInfo(os.environ.get("ALERT_TZ", "").strip() or "America/Toronto"))
     try:
-        qs, qe = (int(x) % 24 for x in (os.environ.get("QUIET_HOURS", "").strip() or "22-7").split("-"))
+        qs, qe = (int(x) % 24 for x in (os.environ.get("QUIET_HOURS", "").strip() or "22-8").split("-"))
     except ValueError:
-        qs, qe = 22, 7
+        qs, qe = 22, 8
     quiet = qs != qe and ((qs <= local.hour or local.hour < qe) if qs > qe else (qs <= local.hour < qe))
     held = state.setdefault("held", [])
     if quiet:
@@ -1331,7 +1368,8 @@ def main() -> int:
         else:
             lines = [meta, snippet(it), "Signals: " + it["why"]]
         send(server, topic, f"{assoc} · {name} · {strip_source(it['title'])}", "\n".join(x for x in lines if x),
-             click=it["link"], priority=max(1, min(5, it["level"])), tags=[ASSOCS[assoc]["emoji"], tag])
+             click=PAGE_URL + "?go=" + item_id(it) if news_path else it["link"],
+             priority=max(1, min(5, it["level"])), tags=[ASSOCS[assoc]["emoji"], tag])
         print(f"sent L{it['level']} [{it['topic']['key']}]:", it["title"], "|", it["why"])
     if len(to_send) > MAX_PER_RUN:
         rest = to_send[MAX_PER_RUN:]
@@ -1359,7 +1397,7 @@ def main() -> int:
                 + (f"\n+{len(top) - 8} more in the app" if len(top) > 8 else ""))
         if parts:
             send(server, topic, "Morning brief" + (f" · {len(held)} overnight" if held else ""),
-                 "\n\n".join(parts), click="https://ethanlaneday.github.io/news-alerts/", priority=3, tags=["sunrise"])
+                 "\n\n".join(parts), click=PAGE_URL, priority=3, tags=["sunrise"])
             print(f"morning brief sent ({len(held)} held stories)")
         state["held"] = []
         state["morning_day"] = today
