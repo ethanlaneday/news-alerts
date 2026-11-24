@@ -99,8 +99,10 @@ TOPICS = [
                  r"battery|gigafactory|clos|shut|moving|relocat|sold|sale of|\bbuy(s|ing)?\b|buyout|acquir|strike|unifor|idle"],
      "queries": ["Canada (auto OR assembly OR EV OR battery) plant",
                  "Ontario auto plant",
-                 "(Stellantis Brampton) OR (Stellantis Windsor) OR (CAMI Ingersoll) OR (GM Oshawa)",
-                 "(Ford Oakville) OR (Honda Alliston) OR (Toyota Woodstock) OR (Toyota Cambridge) OR (Volkswagen St. Thomas)",
+                 # One search per plant: Google News can't parse "(A B) OR (C D)" chains.
+                 "Stellantis Brampton", "Stellantis Windsor plant", "CAMI Ingersoll", "GM Oshawa plant",
+                 "Ford Oakville plant", "Honda Alliston", "Toyota (Woodstock OR Cambridge) plant",
+                 "Volkswagen St. Thomas battery plant",
                  "Canada automaker (production OR layoffs OR investment OR moving OR relocate)",
                  "Unifor (GM OR Ford OR Stellantis OR plant)"]},
     {"key": "evpolicy", "assoc": "CADA", "label": "EV policy", "base": 3,
@@ -143,14 +145,13 @@ TOPICS = [
     {"key": "aihealth", "assoc": "HEAL", "label": "AI in health", "base": 3,
      "require": [CANADA_H, AI_WORDS, HEALTH + r"|clinic|legislation|\bbill\b|regulat"],
      "queries": ['"AI scribe" OR "AI scribes" Canada',
-                 'Canada ("ambient AI" OR "AI dictation" OR "clinical documentation") doctors',
+                 'Canada doctors AI (scribe OR scribes OR documentation OR paperwork)',
                  'Canada "artificial intelligence" health care (doctors OR nurses OR hospitals OR patients)',
                  'Canada AI health (legislation OR regulation OR bill OR privacy)']},
     {"key": "mentalhealth", "assoc": "HEAL", "label": "Mental health", "base": 3,
      "require": [CANADA_H, r"mental health|mental illness|addiction|substance use|opioids?|overdose|suicide|psycholog|"
                            r"psychiatr|\bmhsuh\b|camimh|parity"],
-     "queries": ['"Canada Mental Health Transfer" OR "mental health transfer"',
-                 '"mental health parity" OR "Parity for All Act" OR CAMIMH Canada',
+     "queries": ['("mental health transfer" OR "mental health parity" OR CAMIMH) Canada',
                  '"mental health" Canada federal (funding OR strategy OR legislation)',
                  "Canada (opioid OR \"substance use\") federal"]},
     {"key": "healthfunding", "assoc": "HEAL", "label": "Health funding", "base": 3,
@@ -182,8 +183,8 @@ TOPICS = [
                  '"national licensure" OR "Health Workforce Canada" OR "health human resources"',
                  "Canada (nurses OR doctors OR physicians) shortage federal",
                  "Canada health professionals (\"labour mobility\" OR \"credential recognition\")",
-                 '"national health human resources" OR "health workforce plan" Canada',
-                 'Canada "internationally trained" (nurses OR doctors OR health professionals) accreditation',
+                 '("health human resources" OR "health workforce") Canada',
+                 '"internationally trained" (nurses OR doctors OR physicians) Canada',
                  'Canada health care workers burnout federal']},
     {"key": "healthdata", "assoc": "HEAL", "label": "Health data", "base": 3,
      "require": [CANADA_H, r"health data|health information|interoperab|electronic (health|medical) records?|"
@@ -199,7 +200,7 @@ TOPICS = [
      "queries": ['"community health centres" OR "team-based care" OR "community-based care" Canada',
                  '"home and community care" OR "community paramedicine" Canada',
                  'Canada (pediatric OR "children\'s health") federal',
-                 'Canada (telehealth OR "virtual care") federal']},
+                 'Canada ("virtual care" OR telehealth)']},
     {"key": "access", "assoc": "HEAL", "label": "Access to care", "base": 2,
      "require": [CANADA_H, r"family (doctor|physician)s?|primary care|team-based care|wait (times?|lists?)|"
                          r"emergency (room|department)s?|\ber\b closures?|access to care|unattached patients|walk-in"],
@@ -228,22 +229,22 @@ TOPICS = [
                  '"Health Canada" announces',
                  "Canada mental health federal funding",
                  "long-term care national standards Canada",
-                 "House of Commons health committee HESA",
+                 '"health committee" (MPs OR Commons OR Parliament) Canada',
                  "site:healthydebate.ca",  # its feed blocks readers, so search it instead
                  "Senate social affairs committee health",
                  "federal provincial territorial health ministers meeting",
                  # Statements from HEAL members and allied national health organizations
                  '("Canadian Medical Association" OR "Canadian Nurses Association" OR "Canadian Pharmacists Association") federal',
                  '("Canadian Psychological Association" OR "Canadian Physiotherapy Association" OR '
-                 '"Canadian Association of Social Workers" OR "Canadian Chiropractic Association") federal',
+                 '"Canadian Association of Social Workers" OR "Canadian Chiropractic Association")',
                  '(HealthCareCAN OR "Alzheimer Society of Canada" OR "Obesity Canada" OR '
                  '"Canadian Dental Association") federal',
                  '("Pallium Canada" OR "Canadian Association of Community Health Centres" OR '
                  '"Children\'s Healthcare Canada" OR "Canadian Psychiatric Association")',
                  '("Canadian Society of Respiratory Therapists" OR "Dietitians of Canada" OR '
-                 '"Speech-Language and Audiology Canada" OR "Canadian Association of Midwives") federal',
+                 '"Speech-Language and Audiology Canada" OR "Canadian Association of Midwives")',
                  '("Canadian Dental Hygienists Association" OR "Canadian Association of Optometrists" OR '
-                 '"Canadian Counselling and Psychotherapy Association" OR "Canadian College of Health Leaders") federal',
+                 '"Canadian Counselling and Psychotherapy Association" OR "Canadian College of Health Leaders")',
                  '("Association of Faculties of Medicine of Canada" OR "Royal College of Physicians and Surgeons" OR '
                  '"Canadian Society for Medical Laboratory Science" OR "Canadian Association of Medical Radiation '
                  'Technologists") federal']},
