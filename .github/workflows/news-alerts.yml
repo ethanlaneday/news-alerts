@@ -57,6 +57,7 @@ jobs:
             git show FETCH_HEAD:news.json > news-data/news.json || true
             # Outlet icons saved by earlier runs
             git archive FETCH_HEAD icons 2>/dev/null | tar -x -C news-data 2>/dev/null || true
+            git show FETCH_HEAD:parliament.json > news-data/parliament.json 2>/dev/null || rm -f news-data/parliament.json
           fi
       - name: Check news and notify
         env:
@@ -68,6 +69,7 @@ jobs:
           SEND_TEST: ${{ inputs.send_test && '1' || '' }}
           BACKFILL: ${{ inputs.backfill && '1' || '' }}
           PROBE: ${{ inputs.probe }}
+          PROBE_CHARS: "3000"
           NEWS_FILE: ${{ github.ref == 'refs/heads/main' && 'news-data/news.json' || '' }}
         run: python3 tools/news_alerts.py
       - name: Save memory
@@ -86,6 +88,7 @@ jobs:
           git config user.email "news-alerts@users.noreply.github.com"
           git add news.json
           [ -d icons ] && git add icons || true
+          [ -f parliament.json ] && git add parliament.json || true
           git commit -q -m "News data $(date -u +%FT%TZ)"
           # One commit, replaced each run, so the branch never grows.
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" news-data

@@ -73,6 +73,52 @@ section.level { margin-bottom: 20px; }
 .lvl-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
 .lvl-head .count { font-size: 12px; color: var(--muted); }
 .cards { display: flex; flex-direction: column; gap: 10px; }
+/* ---- News / Parliament switch ---- */
+.tabs { display: flex; padding: 4px; border-radius: 12px; background: var(--line); }
+.tabs button { flex: 1; min-height: 40px; border: none; border-radius: 9px; background: transparent; color: var(--muted);
+  font: 600 14px inherit; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tabs button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,0.14); }
+.tabs .n { padding: 1px 7px; border-radius: 999px; background: var(--new-bg); color: var(--new-fg); font-size: 11px; font-weight: 700; }
+body.parl .news-only { display: none !important; }
+/* ---- Parliament view ---- */
+.p-sec { margin-bottom: 24px; }
+.p-head { display: flex; align-items: baseline; gap: 8px; margin: 0 4px 10px; }
+.p-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+.p-head span { font-size: 12px; color: var(--muted); }
+.p-day { margin: 14px 4px 8px; font-size: 13px; font-weight: 700; } .p-day:first-child { margin-top: 0; }
+.p-card { position: relative; background: var(--card); border: 2px solid var(--o2); border-radius: 16px; overflow: hidden;
+  padding: 14px 16px 14px 23px; display: flex; flex-direction: column; gap: 9px; }
+.p-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--note); }
+.p-card.CADA::before { background: var(--cada); } .p-card.HEAL::before { background: var(--heal); }
+.p-card.hot { border-color: var(--o4); }
+.p-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.p-who { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.p-who b { font-size: 14px; font-weight: 800; letter-spacing: 0.07em; color: var(--muted); }
+.p-who b.CADA { color: var(--cada-text); } .p-who b.HEAL { color: var(--heal-text); }
+.p-code { padding: 2px 7px; border-radius: 6px; background: var(--chip-on-bg); color: var(--chip-on-fg); font-size: 12px; font-weight: 700; }
+.p-time { flex: none; font-size: 13px; font-weight: 600; }
+.p-title { font-size: 17px; font-weight: 600; line-height: 1.28; color: var(--text); text-decoration: none; }
+.p-sub { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.p-note { align-self: flex-start; padding: 3px 9px; border-radius: 999px; background: var(--p4-bg); color: var(--p4-fg); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.p-agenda { margin: 0; padding: 0 0 0 16px; font-size: 13px; line-height: 1.45; color: var(--body); }
+.p-links { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; font-weight: 600; }
+.p-links a, .p-links button { color: var(--unread); text-decoration: none; border: none; background: none; padding: 0; font: inherit; cursor: pointer; min-height: 28px; }
+.trk { display: flex; gap: 3px; } .trk span { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.trk span.gap { margin-left: 8px; } .trk span.on { background: var(--note); }
+.p-card.CADA .trk span.on { background: var(--cada); } .p-card.HEAL .trk span.on { background: var(--heal); }
+.trk-l { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+.p-stage { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.p-stage b { font-weight: 600; } .p-stage span { flex: none; color: var(--muted); }
+.p-list { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 0 16px; list-style: none; margin: 0; }
+.p-list li { display: flex; gap: 11px; padding: 13px 0; border-top: 1px solid var(--line); } .p-list li:first-child { border-top: none; }
+.p-list .bar { flex: none; width: 4px; border-radius: 2px; background: var(--note); }
+.p-list .bar.CADA { background: var(--cada); } .p-list .bar.HEAL { background: var(--heal); }
+.p-list .txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.p-list .m { font-size: 12px; color: var(--muted); } .p-list .m .n { color: var(--unread); font-weight: 700; }
+.p-list .m b.CADA { color: var(--cada-text); } .p-list .m b.HEAL { color: var(--heal-text); }
+.p-list .w { font-size: 14px; font-weight: 600; } .p-list .w span { font-weight: 400; color: var(--muted); }
+.p-list a.q { font-size: 14px; line-height: 1.42; color: var(--body); text-decoration: none; }
+.p-list mark { background: var(--p4-bg); color: var(--p4-fg); padding: 0 2px; border-radius: 3px; }
 /* ---- story cards ---- */
 article.card { position: relative; padding: 0 0 0 7px; gap: 0; border-radius: 16px; overflow: hidden; border: 2px solid var(--o2); }
 /* Left rail = which association. Outline = how important: red critical, amber high, grey notable. */
@@ -198,14 +244,15 @@ article.unseen { border-color: var(--new-line); }
       </button>
     </div>
     <p class="meta" id="meta">Loading…</p>
-    <input class="search" id="q" type="search" placeholder="Search headlines" aria-label="Search headlines" autocomplete="off" enterkeyhint="search">
+    <div class="tabs" role="group" aria-label="View" id="tabs"></div>
+    <input class="search news-only" id="q" type="search" placeholder="Search headlines" aria-label="Search headlines" autocomplete="off" enterkeyhint="search">
     <div class="row" role="group" aria-label="Association" id="assocChips"></div>
-    <div class="row scroll" role="group" aria-label="Topic" id="topicChips"></div>
-    <div class="row" role="group" aria-label="Time range" id="rangeChips"></div>
+    <div class="row scroll news-only" role="group" aria-label="Topic" id="topicChips"></div>
+    <div class="row news-only" role="group" aria-label="Time range" id="rangeChips"></div>
   </header>
-  <div id="brief"></div>
+  <div id="brief" class="news-only"></div>
   <main id="list" aria-live="polite"></main>
-  <p class="foot">Sorted by importance, newest first · alerts for important stories still go to your phone</p>
+  <p class="foot news-only">Sorted by importance, newest first · alerts for important stories still go to your phone</p>
 </div>
 <script>
 (function () {
@@ -240,7 +287,9 @@ article.unseen { border-color: var(--new-line); }
     showNewFyi: false,
     query: "", topic: "all",
     open: {},                              // threads whose other articles are expanded
-    fetchedAt: 0                           // when this device last got fresh data
+    fetchedAt: 0,                          // when this device last got fresh data
+    view: load("news.view", "news"),       // "news" or "parl"
+    parl: null, parlSeen: load("parl.seen", null), parlNew: {}, parlOpen: {}, parlMore: {}
   };
 
   // ---- Seen tracking: a story counts as seen once its card has been on screen for ~1 s, or is tapped.
@@ -520,12 +569,160 @@ article.unseen { border-color: var(--new-line); }
     return card;
   }
 
+  // ---- Parliament view: committee meetings, bills, and what was said (parliament.json)
+  function parlKeys(p) {
+    var keys = [];
+    (p.meetings || []).forEach(function (m) { keys.push("m:" + m.url); });
+    (p.bills || []).forEach(function (b) { keys.push("b:" + b.num + ":" + b.status); });
+    (p.mentions || []).forEach(function (m) { keys.push("s:" + m.link); });
+    return keys;
+  }
+  function setParl(p) {
+    state.parl = p;
+    var keys = parlKeys(p);
+    if (state.parlSeen === null) { state.parlSeen = {}; keys.forEach(function (k) { state.parlSeen[k] = 1; }); save("parl.seen", state.parlSeen); }
+    keys.forEach(function (k) { if (!state.parlSeen[k]) state.parlNew[k] = 1; });
+  }
+  function parlCount() { return state.parl ? parlKeys(state.parl).filter(function (k) { return !state.parlSeen[k]; }).length : 0; }
+  function parlMarkSeen() {   // opening the tab counts as seeing it; the NEW marks stay until the next refresh
+    if (!state.parl) return;
+    var keep = {};
+    parlKeys(state.parl).forEach(function (k) { keep[k] = 1; });
+    state.parlSeen = keep; save("parl.seen", keep);
+  }
+  function renderTabs() {
+    var box = document.getElementById("tabs"), n = state.view === "parl" ? 0 : parlCount();
+    box.textContent = "";
+    [["news", "News"], ["parl", "Parliament"]].forEach(function (t) {
+      box.appendChild(el("button", { type: "button", "aria-pressed": String(state.view === t[0]), onclick: function () {
+        if (state.view === t[0]) return;
+        state.view = t[0]; save("news.view", t[0]); render(); window.scrollTo(0, 0);
+      } }, [document.createTextNode(t[1]), t[0] === "parl" && n ? el("span", { class: "n", text: String(n) }) : null]));
+    });
+  }
+  function clock(t) {   // "16:30" -> "4:30 pm"
+    var m = /^(\d\d):(\d\d)/.exec(t || ""); if (!m) return "";
+    var h = +m[1]; return ((h + 11) % 12 + 1) + ":" + m[2] + (h < 12 ? " am" : " pm");
+  }
+  function dayLabel(iso) {
+    var p = iso.split("-"), d = new Date(+p[0], +p[1] - 1, +p[2]), t = new Date(); t.setHours(0, 0, 0, 0);
+    var diff = Math.round((d - t) / 86400000);
+    var txt = d.toLocaleDateString("en-CA", { weekday: "long", month: "short", day: "numeric" });
+    return diff === 0 ? "Today · " + txt : diff === 1 ? "Tomorrow · " + txt : txt;
+  }
+  function marked(text, term) {   // the quote, with the searched phrase highlighted
+    var out = el("span"), words = String(term || "").replace(/^the\s+/i, "").trim();
+    var at = words ? text.toLowerCase().indexOf(words.toLowerCase()) : -1;
+    if (at < 0) { out.textContent = "“" + text + "”"; return out; }
+    out.appendChild(document.createTextNode("“" + text.slice(0, at)));
+    out.appendChild(el("mark", { text: text.slice(at, at + words.length) }));
+    out.appendChild(document.createTextNode(text.slice(at + words.length) + "”"));
+    return out;
+  }
+  function assocLabel(a) { return a === "CADA" || a === "HEAL" ? el("b", { class: a, text: a }) : null; }
+  function parlNewPill(key) { return state.parlNew[key] ? el("span", { class: "lvl newpill", style: "background:var(--new-bg);color:var(--new-fg)", text: "NEW" }) : null; }
+  function renderParl(list) {
+    var p = state.parl;
+    if (!p) { list.appendChild(el("p", { class: "empty", text: "Loading Parliament…" })); return; }
+    var show = function (x) { return state.assoc === "all" || x.assoc === state.assoc || x.assoc === "BOTH"; };
+    var link = function (url, text) { return safeLink(url) ? el("a", { href: url, target: "_blank", rel: "noopener", text: text }) : null; };
+
+    // -- committee meetings, soonest first
+    var today = new Date(); today = today.getFullYear() + "-" + ("0" + (today.getMonth() + 1)).slice(-2) + "-" + ("0" + today.getDate()).slice(-2);
+    var meets = (p.meetings || []).filter(show).filter(function (m) { return m.date >= today; });
+    var sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "COMMITTEE MEETINGS" }), el("span", { text: "next two weeks" })])]);
+    if (!meets.length) sec.appendChild(el("p", { class: "p-sub", style: "margin:0 4px", text: "No meetings posted yet for the committees being watched." }));
+    var lastDay = "";
+    var cards = el("div", { class: "cards" });
+    meets.forEach(function (m) {
+      if (m.date !== lastDay) { lastDay = m.date; cards.appendChild(el("h3", { class: "p-day", text: dayLabel(m.date) })); }
+      var key = "m:" + m.url, open = !!state.parlOpen[key], agenda = m.agenda || [];
+      var when = clock(m.start) + (m.end ? " – " + clock(m.end) : "");
+      cards.appendChild(el("article", { class: "p-card " + m.assoc + (m.topic || m.witness ? " hot" : "") }, [
+        el("div", { class: "p-top" }, [
+          el("div", { class: "p-who" }, [assocLabel(m.assoc), el("span", { class: "p-code", text: m.code }), el("span", { text: m.committee + " committee" })]),
+          parlNewPill(key)
+        ]),
+        el("span", { class: "p-title", text: m.subject || "Agenda not posted yet" }),
+        el("div", { class: "p-stage" }, [el("b", { text: when || "Time to be confirmed" }), el("span", { text: m.in_camera ? "In camera (closed)" : "Meeting " + m.num })]),
+        m.topic ? el("span", { class: "p-note", text: "TOUCHES " + m.topic.toUpperCase() }) : null,
+        m.witness ? el("span", { class: "p-note", text: "APPEARING: " + m.witness }) : null,
+        open && agenda.length ? el("ul", { class: "p-agenda" }, agenda.map(function (a) { return el("li", { text: a }); })) : null,
+        el("div", { class: "p-links" }, [
+          agenda.length ? el("button", { type: "button", "aria-expanded": String(open), text: open ? "Hide agenda" : "Show agenda and witnesses",
+            onclick: function () { state.parlOpen[key] = !open; render(); } }) : null,
+          link(m.notice, "Notice"), link(m.webcast, "Webcast")
+        ])
+      ]));
+    });
+    sec.appendChild(cards); list.appendChild(sec);
+
+    // -- bills, most recent change first
+    var bills = (p.bills || []).filter(show);
+    var moreB = !!state.parlMore.bills, shownB = moreB ? bills : bills.slice(0, 6);
+    sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "BILLS BEING TRACKED" }), el("span", { text: bills.length + " · most recent change first" })])]);
+    cards = el("div", { class: "cards" });
+    shownB.forEach(function (b) {
+      var key = "b:" + b.num + ":" + b.status, segs = [];
+      for (var k = 0; k < 7; k++) segs.push(el("span", { class: (k < b.done ? "on" : "") + (k === 3 || k === 6 ? " gap" : "") }));
+      cards.appendChild(el("article", { class: "p-card " + b.assoc + (state.parlNew[key] ? " hot" : "") }, [
+        el("div", { class: "p-top" }, [
+          el("div", { class: "p-who" }, [assocLabel(b.assoc), el("span", { class: "p-code", text: b.num }), el("span", { text: b.topic })]),
+          state.parlNew[key] ? el("span", { class: "lvl newpill", style: "background:var(--new-bg);color:var(--new-fg)", text: "NEW STAGE" }) : null
+        ]),
+        safeLink(b.link) ? el("a", { class: "p-title", href: b.link, target: "_blank", rel: "noopener", text: b.title }) : el("span", { class: "p-title", text: b.title }),
+        el("span", { class: "p-sub", text: [b.type, b.sponsor].filter(Boolean).join(" · ") }),
+        el("div", { class: "trk", "aria-hidden": "true" }, segs),
+        el("div", { class: "trk-l", "aria-hidden": "true" }, [el("span", { text: b.senate ? "SENATE" : "HOUSE" }), el("span", { text: b.senate ? "HOUSE" : "SENATE" }), el("span", { text: "ROYAL ASSENT" })]),
+        el("div", { class: "p-stage" }, [el("b", { text: b.status || "Introduced" }), el("span", { text: b.changed ? ago(b.changed) : "" })])
+      ]));
+    });
+    sec.appendChild(cards);
+    if (bills.length > 6) sec.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
+      text: moreB ? "Show fewer bills" : "Show " + (bills.length - 6) + " more bills", onclick: function () { state.parlMore.bills = !moreB; render(); } }));
+    if (!bills.length) sec.appendChild(el("p", { class: "p-sub", style: "margin:0 4px", text: "No tracked bills in this view." }));
+    list.appendChild(sec);
+
+    // -- said in Parliament
+    var said = (p.mentions || []).filter(show);
+    var moreS = !!state.parlMore.said, shownS = moreS ? said : said.slice(0, 6);
+    sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "SAID IN PARLIAMENT" }), el("span", { text: "last three weeks" })])]);
+    if (said.length) {
+      var ul = el("ul", { class: "p-list" });
+      shownS.forEach(function (m) {
+        var key = "s:" + m.link;
+        var when = new Date(m.ts * 1000).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+        ul.appendChild(el("li", null, [el("span", { class: "bar " + m.assoc, "aria-hidden": "true" }), el("div", { class: "txt" }, [
+          el("span", { class: "m" }, [state.parlNew[key] ? el("span", { class: "n", text: "New · " }) : null, assocLabel(m.assoc),
+            document.createTextNode(" · " + m.where + " · " + when + (m.about ? " · " + m.about : ""))]),
+          el("span", { class: "w" }, [document.createTextNode(m.who), m.role ? el("span", { text: " · " + m.role }) : null]),
+          safeLink(m.link) ? el("a", { class: "q", href: m.link, target: "_blank", rel: "noopener" }, [marked(m.quote, m.term)]) : marked(m.quote, m.term)
+        ])]));
+      });
+      sec.appendChild(ul);
+      if (said.length > 6) sec.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
+        text: moreS ? "Show fewer" : "Show " + (said.length - 6) + " more mentions", onclick: function () { state.parlMore.said = !moreS; render(); } }));
+    } else sec.appendChild(el("p", { class: "p-sub", style: "margin:0 4px", text: "No mentions found in the last three weeks." }));
+    list.appendChild(sec);
+    list.appendChild(el("p", { class: "foot", text: "Sources: LEGISinfo, House of Commons notices, openparliament.ca" + (p.at ? " · updated " + ago(p.at) : "") }));
+    parlMarkSeen();
+  }
+
   function render() {
     var d = state.data;
     var list = document.getElementById("list");
     var briefBox = document.getElementById("brief");
     list.textContent = ""; briefBox.textContent = "";
     if (watcher) watcher.disconnect();
+    document.body.classList.toggle("parl", state.view === "parl");
+    renderTabs();
+    if (state.view === "parl") {
+      chips(document.getElementById("assocChips"),
+        [{ key: "all", label: "All" }, { key: "CADA", label: "CADA", cls: "CADA" }, { key: "HEAL", label: "HEAL", cls: "HEAL" }],
+        state.assoc, function (k) { state.assoc = k; save("news.assoc", k); render(); });
+      renderParl(list);
+      return;
+    }
     if (!d) return;
 
     var f = filtered(), inRange = f.inRange;
@@ -656,7 +853,18 @@ article.unseen { border-color: var(--new-line); }
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .catch(function (e) { if (i + 1 < DATA_URLS.length) return getData(i + 1); throw e; });
   }
+  function getParl(i) {
+    var src = DATA_URLS[i], url = src.url.replace("news.json", "parliament.json");
+    return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store", headers: src.headers })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .catch(function (e) { if (i + 1 < DATA_URLS.length) return getParl(i + 1); throw e; });
+  }
+  function refreshParl() {
+    getParl(0).then(function (p) { state.parlNew = {}; setParl(p); render(); })
+      .catch(function () { if (!state.parl) { state.parl = { meetings: [], bills: [], mentions: [] }; render(); } });
+  }
   function refresh() {
+    refreshParl();
     if (loading) return;
     loading = true;
     var btn = document.getElementById("refresh");

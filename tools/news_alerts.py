@@ -1126,6 +1126,16 @@ def safe_icons(news, path, now):
         print(f"outlet icons failed: {e}", file=sys.stderr)
 
 
+def safe_parliament(path, now):
+    if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
+        return
+    try:
+        import parliament
+        parliament.update(path, now, sys.modules[__name__])
+    except Exception as e:  # the Parliament view is extra; never let it stop the news
+        print(f"parliament failed: {e}", file=sys.stderr)
+
+
 def update_news(path, cands, now, force_brief=False):
     threshold_for_page = page_threshold
     news = load_news(path)
@@ -1151,6 +1161,7 @@ def update_news(path, cands, now, force_brief=False):
             news["brief"] = b
     merge_taps(news)
     safe_icons(news, path, now)
+    safe_parliament(path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
@@ -1230,6 +1241,7 @@ def backfill(server, topic, feed_override):
         news["brief"] = b
     merge_taps(news)
     safe_icons(news, path, now)
+    safe_parliament(path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
@@ -1293,15 +1305,27 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "parliament":
+        import parliament
+        return parliament.debug(sys.modules[__name__])
     for u in urls.split():
         try:
-            req = urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "*/*"})
+            browser = u.startswith("b:")  # "b:https://…" = ask the way a browser would
+            u = u[2:] if browser else u
+            req = urllib.request.Request(u, headers={"User-Agent": BROWSER_UA if browser else UA, "Accept": "*/*",
+                                                     "Accept-Language": "en-CA,en;q=0.9"})
             with urllib.request.urlopen(req, timeout=25) as resp:
                 body = resp.read(400000)
                 text = body.decode("utf-8", "replace")
                 links = sorted(set(re.findall(r'(?:href|src)="([^"]*(?:rss|feed|atom|xml)[^"]*)"', text, re.I)))[:15]
                 print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
-                print("   head:", re.sub(r"\s+", " ", text[:500]))
+                print("   head:", re.sub(r"\s+", " ", text[:int(os.environ.get("PROBE_CHARS") or 500)]))
+                print("   keys:", sorted(set(re.findall(r'"(\w*(?:DateTime|Reading|Assent|Committee)\w*)":', text)))[:80])
+                if "<html" in text[:2000].lower():
+                    plain = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " | ", re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", text))))
+                    plain = re.sub(r"( \| )+", " | ", plain)
+                    at = max(plain.lower().find("notice of meeting", 600), 0)
+                    print("   text:", plain[at:at + 3500])
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:
