@@ -98,8 +98,9 @@ article.card.unseen.lv3 { border-color: var(--o3); }
 .outlet .age { flex: none; }
 .oi { position: relative; flex: none; display: grid; place-items: center; border-radius: 6px; overflow: hidden;
   color: #FFFFFF; font-weight: 700; line-height: 1; }
-.oi img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #FFFFFF; display: none; }
-.oi.has-img img { display: block; }
+/* Hidden with opacity, not display:none, so the browser still fetches it. */
+.oi img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #FFFFFF; opacity: 0; }
+.oi.has-img img { opacity: 1; }
 .card .headline a, .card .headline .t { font-size: 18px; font-weight: 600; line-height: 1.28; letter-spacing: -0.01em; color: var(--text); text-decoration: none; }
 .whybox { background: var(--soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
 .whybox span:first-child { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
@@ -366,11 +367,17 @@ article.unseen { border-color: var(--new-line); }
     "financial post": "financialpost.com", "national post": "nationalpost.com", "windsor star": "windsorstar.com",
     "automotive news": "autonews.com", "automotive news canada": "autonews.com", "ipolitics": "ipolitics.ca",
     "politico": "politico.com", "the hill times": "hilltimes.com", "reuters": "reuters.com", "bloomberg": "bloomberg.com",
-    "the canadian press": "thecanadianpress.com", "hospital news": "hospitalnews.com", "policy options": "policyoptions.irpp.org",
+    "hospital news": "hospitalnews.com", "policy options": "policyoptions.irpp.org",
     "electric autonomy canada": "electricautonomy.ca", "canadian auto dealer": "canadianautodealer.ca", "driving.ca": "driving.ca",
     "the conversation canada": "theconversation.com", "government of canada": "canada.ca", "bank of canada": "bankofcanada.ca",
     "parliament (hansard)": "ourcommons.ca", "parliament of canada (legisinfo)": "parl.ca", "toronto sun": "torontosun.com",
-    "am 800 cklw": "iheartradio.ca", "national newswatch": "nationalnewswatch.com", "cpac": "cpac.ca" };
+    "am 800 cklw": "iheartradio.ca", "cbc.ca": "cbc.ca", "bnn bloomberg": "bnnbloomberg.ca", "vancouver sun": "vancouversun.com",
+    "the logic": "thelogic.co", "the hub": "thehub.ca", "yahoo news canada": "yahoo.com", "yahoo finance canada": "yahoo.com",
+    "rebel news": "rebelnews.com", "motor1.com": "motor1.com", "ford authority": "fordauthority.com", "just auto": "just-auto.com",
+    "cbt news": "cbtnews.com", "the canadian press": "thecanadianpress.com", "canadian medical association": "cma.ca",
+    "canadian automobile dealers association (cada)": "cada.ca", "the tyee": "thetyee.ca", "la presse": "lapresse.ca",
+    "radio-canada": "radio-canada.ca", "the walrus": "thewalrus.ca", "macleans": "macleans.ca", "ottawa citizen": "ottawacitizen.com",
+    "montreal gazette": "montrealgazette.com", "calgary herald": "calgaryherald.com", "citynews": "citynews.ca", "national newswatch": "nationalnewswatch.com", "cpac": "cpac.ca" };
   var HUES = ["#1D2939", "#175CD3", "#067647", "#6941C6", "#B54708", "#0E7090", "#9E165F", "#475467"];
   function outletIcon(i, size) {
     var name = i.source || "News";
@@ -380,9 +387,10 @@ article.unseen { border-color: var(--new-line); }
     var box = el("span", { class: "oi", "aria-hidden": "true",
       style: "width:" + size + "px;height:" + size + "px;font-size:" + Math.max(7, Math.round(size * 0.4)) + "px;background:" + HUES[hash % HUES.length],
       text: initials });
-    var domain = i.domain || DOMAINS[name.toLowerCase()];
+    var key = outletName(i).toLowerCase();
+    var domain = i.domain || DOMAINS[key] || DOMAINS[key.replace(/^the\s+/, "")] || (/^[a-z0-9\-]+(\.[a-z0-9\-]+)+$/.test(key) ? key : "");
     if (domain && /^[a-z0-9.\-]+$/.test(domain)) {
-      var img = el("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer",
+      var img = el("img", { alt: "", decoding: "async", referrerpolicy: "no-referrer",
         src: "https://www.google.com/s2/favicons?sz=64&domain=" + encodeURIComponent(domain) });
       img.addEventListener("load", function () { if (img.naturalWidth > 16) box.classList.add("has-img"); });
       box.appendChild(img);
