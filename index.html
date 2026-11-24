@@ -172,6 +172,15 @@ ul.rows .m, ol.tl .m { font-size: 12px; color: var(--muted); } .m .n { color: va
 .story-head .who b.CADA { color: var(--cada-text); } .story-head .who b.HEAL { color: var(--heal-text); }
 .story-head h3 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.22; letter-spacing: -0.01em; }
 .story-head p { margin: 0; font-size: 13px; color: var(--muted); }
+.keys-wrap { padding: 14px 16px 6px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+ol.keys { list-style: none; margin: 0; padding: 0; }
+ol.keys li { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; padding: 7px 0; }
+ol.keys li.part { display: block; padding: 8px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+ol.keys .when { font-size: 12px; font-weight: 600; color: var(--muted); padding-top: 2px; }
+ol.keys .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+ol.keys .t { font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--text); }
+ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(--muted); }
+.keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -495,10 +504,40 @@ article.unseen { border-color: var(--new-line); }
     var topic = i.topic !== i.assoc ? i.topic : "";
     var kids;
 
-    if (isBig(t)) {
+    var st = ((state.data || {}).stories || {})[t.tid];   // the story's lasting record, if it has one
+    if (isBig(t) || st) {
       var outlets = {}; t.items.forEach(function (x) { outlets[x.source || "?"] = 1; });
       var latest = Math.max.apply(null, t.items.map(function (x) { return x.seen; }));
-      var shown = isOpen ? t.rest : t.rest.slice(0, 3);
+      // Once a story has keystones, older articles they already cover are tucked away.
+      var dig = {}; (st ? st.digested || [] : []).forEach(function (id) { dig[id] = 1; });
+      var cut = Date.now() / 1000 - 2 * 86400;
+      var recent = st ? t.rest.filter(function (x) { return !dig[x.id] || x.seen > cut || state.newIds[x.id]; }) : t.rest;
+      var firstFew = recent.slice(0, 3);
+      var shown = isOpen ? t.rest : firstFew;
+      var keyBox = null;
+      if (st) {
+        var kOpen = !!state.open[t.tid + ":keys"], keys = kOpen ? st.keys : st.keys.slice(0, 4), lastPart = null;
+        var kl = el("ol", { class: "keys" });
+        var parts = (st.parts || []).length > 1;
+        if (parts) keys = keys.slice().sort(function (a, b) { return st.parts.indexOf(a.part) - st.parts.indexOf(b.part) || (a.date < b.date ? 1 : -1); });
+        keys.forEach(function (k) {
+          if (parts && k.part !== lastPart) { lastPart = k.part; kl.appendChild(el("li", { class: "part", text: k.part.toUpperCase() })); }
+          var d = k.date.split("-"), when = new Date(+d[0], +d[1] - 1, +d[2]).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+          var src = el("span", { class: "m" });
+          (k.src || []).forEach(function (x, n) {
+            if (n) src.appendChild(document.createTextNode(" · "));
+            src.appendChild(safeLink(x.link) ? el("a", { href: x.link, target: "_blank", rel: "noopener", text: x.source || "Source" }) : document.createTextNode(x.source || ""));
+          });
+          kl.appendChild(el("li", null, [el("span", { class: "when", text: when }), el("div", { class: "txt" }, [el("span", { class: "t", text: k.text }), src])]));
+        });
+        keyBox = el("div", { class: "keys-wrap" }, [
+          st.stands ? el("div", { class: "whybox" }, [el("span", { text: "WHERE IT STANDS" }), el("span", { text: st.stands })]) : null,
+          el("span", { class: "kicker", text: "KEY DEVELOPMENTS" }), kl,
+          st.keys.length > 4 ? el("button", { type: "button", class: "link-btn", "aria-expanded": String(kOpen),
+            text: kOpen ? "Show fewer" : "Show all " + st.keys.length + " key developments",
+            onclick: function () { state.open[t.tid + ":keys"] = !kOpen; render(); } }) : null
+        ]);
+      }
       var tl = el("ol", { class: "tl" });
       shown.forEach(function (x) {
         var dev = x.dev !== false && x.level >= 3;
@@ -516,17 +555,19 @@ article.unseen { border-color: var(--new-line); }
       kids = [
         el("header", { class: "story-head" }, [
           el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]), lvlPill(i.level)]),
-          el("h3", { text: t.story || i.title }),
-          el("p", { text: t.items.length + " articles · " + Object.keys(outlets).length + " outlets · updated " + ago(latest) })
+          el("h3", { text: (st && st.name) || t.story || i.title }),
+          el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
+            t.items.length + " articles this week · updated " + ago(latest) })
         ]),
+        keyBox,
         el("div", { class: "card-body" }, [
           el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
           el("div", { class: "headline" }, [titleNode(i, getCard, ids)]),
           outletRow(i)
         ].concat(bodyParts(i))),
-        el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: "MORE ON THIS STORY" }), tl]),
-        t.rest.length > 3 ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
-          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - 3) + " more articles"), chevron(isOpen)]) : null
+        shown.length ? el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: st ? "RECENT COVERAGE" : "MORE ON THIS STORY" }), tl]) : null,
+        t.rest.length > firstFew.length ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
+          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - firstFew.length) + (st ? " earlier articles" : " more articles")), chevron(isOpen)]) : null
       ];
     } else {
       var bar = null, rows = null;

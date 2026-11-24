@@ -58,6 +58,7 @@ jobs:
             # Outlet icons saved by earlier runs
             git archive FETCH_HEAD icons 2>/dev/null | tar -x -C news-data 2>/dev/null || true
             git show FETCH_HEAD:parliament.json > news-data/parliament.json 2>/dev/null || rm -f news-data/parliament.json
+            git show FETCH_HEAD:stories.json > news-data/stories.json 2>/dev/null || rm -f news-data/stories.json
           fi
       - name: Check news and notify
         env:
@@ -89,6 +90,7 @@ jobs:
           git add news.json
           [ -d icons ] && git add icons || true
           [ -f parliament.json ] && git add parliament.json || true
+          [ -f stories.json ] && git add stories.json || true
           git commit -q -m "News data $(date -u +%FT%TZ)"
           # One commit, replaced each run, so the branch never grows.
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" news-data

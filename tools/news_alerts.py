@@ -1126,6 +1126,16 @@ def safe_icons(news, path, now):
         print(f"outlet icons failed: {e}", file=sys.stderr)
 
 
+def safe_keystones(news, path, now):
+    if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
+        return
+    try:
+        import keystones
+        keystones.update(news, path, now)
+    except Exception as e:  # never let the daily summaries stop the news
+        print(f"keystones failed: {e}", file=sys.stderr)
+
+
 def safe_parliament(path, now):
     if os.environ.get("FEED_FILE") or os.environ.get("DRY_RUN") == "1":
         return
@@ -1160,6 +1170,7 @@ def update_news(path, cands, now, force_brief=False):
         if b:
             news["brief"] = b
     merge_taps(news)
+    safe_keystones(news, path, now)
     safe_icons(news, path, now)
     safe_parliament(path, now)
     news["checked"] = int(now)
@@ -1240,6 +1251,7 @@ def backfill(server, topic, feed_override):
     if b:
         news["brief"] = b
     merge_taps(news)
+    safe_keystones(news, path, now)
     safe_icons(news, path, now)
     safe_parliament(path, now)
     news["checked"] = int(now)
@@ -1305,6 +1317,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "keystones":
+        import keystones
+        return keystones.debug(sys.modules[__name__])
     if urls.strip() == "parliament":
         import parliament
         return parliament.debug(sys.modules[__name__])
@@ -1481,6 +1496,12 @@ def main() -> int:
     news_path = os.environ.get("NEWS_FILE", "").strip()
     already = [(t, ts) for _, ts, _, t in sorted(sent_recent, key=lambda e: -e[1]) if t]
     stories = known_stories(load_news(news_path)["items"], now) if news_path else []
+    if news_path:   # long-running stories that have gone quiet keep their thread
+        try:
+            import keystones
+            stories += keystones.on_file(news_path, now, have={g["tid"] for g in stories})
+        except Exception as e:
+            print(f"keystones on file: {e}", file=sys.stderr)
     if cands and ai_score(cands[:40], already, stories):
         for it in cands[:40]:
             if it.get("by_ai"):
