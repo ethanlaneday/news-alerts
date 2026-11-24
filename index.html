@@ -77,6 +77,13 @@ section.level { margin-bottom: 20px; }
 .lvl-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
 .lvl-head .count { font-size: 12px; color: var(--muted); }
 .cards { display: flex; flex-direction: column; gap: 10px; }
+/* ---- Filters, folded away until needed ---- */
+.filter-btn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 12px;
+  border: 1px solid var(--chip-line); background: var(--card); color: var(--text); font: 600 14px inherit; font-family: inherit; cursor: pointer; text-align: left; }
+.filter-btn svg { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.filter-btn .now { flex: 1; min-width: 0; font-weight: 400; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filter-btn .chev { transition: transform .15s ease; } .filter-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.filters { display: flex; flex-direction: column; gap: 10px; } .filters[hidden] { display: none; }
 /* ---- News / Parliament switch ---- */
 .tabs { display: flex; padding: 4px; border-radius: 12px; background: var(--line); }
 .tabs button { flex: 1; min-height: 40px; border: none; border-radius: 9px; background: transparent; color: var(--muted);
@@ -260,10 +267,17 @@ article.unseen { border-color: var(--new-line); }
     </div>
     <p class="meta" id="meta">Loading…</p>
     <div class="tabs" role="group" aria-label="View" id="tabs"></div>
-    <input class="search news-only" id="q" type="search" placeholder="Search headlines" aria-label="Search headlines" autocomplete="off" enterkeyhint="search">
-    <div class="row" role="group" aria-label="Association" id="assocChips"></div>
-    <div class="row scroll news-only" role="group" aria-label="Topic" id="topicChips"></div>
-    <div class="row news-only" role="group" aria-label="Time range" id="rangeChips"></div>
+    <button class="filter-btn" id="filterBtn" type="button" aria-expanded="false" aria-controls="filters">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      <span class="lab">Filters</span><span class="now" id="filterNow"></span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="filters" id="filters" hidden>
+      <input class="search news-only" id="q" type="search" placeholder="Search headlines" aria-label="Search headlines" autocomplete="off" enterkeyhint="search">
+      <div class="row" role="group" aria-label="Association" id="assocChips"></div>
+      <div class="row scroll news-only" role="group" aria-label="Topic" id="topicChips"></div>
+      <div class="row news-only" role="group" aria-label="Time range" id="rangeChips"></div>
+    </div>
   </header>
   <div id="brief" class="news-only"></div>
   <main id="list" aria-live="polite"></main>
@@ -303,6 +317,7 @@ article.unseen { border-color: var(--new-line); }
     query: "", topic: "all",
     open: {},                              // threads whose other articles are expanded
     fetchedAt: 0,                          // when this device last got fresh data
+    filtersOpen: load("news.filtersOpen", false),
     view: load("news.view", "news"),       // "news" or "parl"
     parl: null, parlSeen: load("parl.seen", null), parlNew: {}, parlOpen: {}, parlMore: {}
   };
@@ -641,7 +656,20 @@ article.unseen { border-color: var(--new-line); }
     parlKeys(state.parl).forEach(function (k) { keep[k] = 1; });
     state.parlSeen = keep; save("parl.seen", keep);
   }
+  function renderFilterBar() {   // the folded bar says what is currently applied
+    var btn = document.getElementById("filterBtn"), parts = [];
+    parts.push(state.assoc === "all" ? "All" : state.assoc);
+    if (state.view !== "parl") {
+      if (state.topic !== "all") parts.push(state.topic);
+      parts.push(state.range === "day" ? "Last 24 hours" : "This week");
+      if (state.query.trim()) parts.push("“" + state.query.trim() + "”");
+    }
+    document.getElementById("filterNow").textContent = parts.join(" · ");
+    btn.setAttribute("aria-expanded", String(state.filtersOpen));
+    document.getElementById("filters").hidden = !state.filtersOpen;
+  }
   function renderTabs() {
+    renderFilterBar();
     var box = document.getElementById("tabs"), n = state.view === "parl" ? 0 : parlCount();
     box.textContent = "";
     [["news", "News"], ["parl", "Parliament"]].forEach(function (t) {
@@ -986,6 +1014,9 @@ article.unseen { border-color: var(--new-line); }
     document.addEventListener("touchend", end); document.addEventListener("touchcancel", end);
   })();
   document.getElementById("q").addEventListener("input", function (e) { state.query = e.target.value; render(); });
+  document.getElementById("filterBtn").addEventListener("click", function () {
+    state.filtersOpen = !state.filtersOpen; save("news.filtersOpen", state.filtersOpen); renderFilterBar();
+  });
   setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
 
   // Opened from a notification (?go=<story id>): note it as seen, then go straight to the article.
