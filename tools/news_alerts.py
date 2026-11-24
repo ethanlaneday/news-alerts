@@ -1301,7 +1301,7 @@ def probe(urls):
                 text = body.decode("utf-8", "replace")
                 links = sorted(set(re.findall(r'(?:href|src)="([^"]*(?:rss|feed|atom|xml)[^"]*)"', text, re.I)))[:15]
                 print(f"PROBE {resp.status} {resp.headers.get('Content-Type')} len={len(body)} {u}")
-                print("   head:", re.sub(r"\s+", " ", text[:500]))
+                print("   head:", re.sub(r"\s+", " ", text[:int(os.environ.get("PROBE_CHARS") or 500)]))
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:

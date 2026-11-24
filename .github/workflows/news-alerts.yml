@@ -68,6 +68,7 @@ jobs:
           SEND_TEST: ${{ inputs.send_test && '1' || '' }}
           BACKFILL: ${{ inputs.backfill && '1' || '' }}
           PROBE: ${{ inputs.probe }}
+          PROBE_CHARS: "3000"
           NEWS_FILE: ${{ github.ref == 'refs/heads/main' && 'news-data/news.json' || '' }}
         run: python3 tools/news_alerts.py
       - name: Save memory
