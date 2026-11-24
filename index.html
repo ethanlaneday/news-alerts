@@ -113,7 +113,8 @@ body.parl .news-only { display: none !important; }
 .p-list li { display: flex; gap: 11px; padding: 13px 0; border-top: 1px solid var(--line); } .p-list li:first-child { border-top: none; }
 .p-list .bar { flex: none; width: 4px; border-radius: 2px; background: var(--note); }
 .p-list .bar.CADA { background: var(--cada); } .p-list .bar.HEAL { background: var(--heal); }
-.p-list .txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.p-list .txt { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.p-list .mrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .p-list .m { font-size: 12px; color: var(--muted); } .p-list .m .n { color: var(--unread); font-weight: 700; }
 .p-list .m b.CADA { color: var(--cada-text); } .p-list .m b.HEAL { color: var(--heal-text); }
 .p-list .w { font-size: 14px; font-weight: 600; } .p-list .w span { font-weight: 400; color: var(--muted); }
@@ -693,8 +694,9 @@ article.unseen { border-color: var(--new-line); }
         var key = "s:" + m.link;
         var when = new Date(m.ts * 1000).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
         ul.appendChild(el("li", null, [el("span", { class: "bar " + m.assoc, "aria-hidden": "true" }), el("div", { class: "txt" }, [
-          el("span", { class: "m" }, [state.parlNew[key] ? el("span", { class: "n", text: "New · " }) : null, assocLabel(m.assoc),
-            document.createTextNode(" · " + m.where + " · " + when + (m.about ? " · " + m.about : ""))]),
+          el("div", { class: "mrow" }, [
+            el("span", { class: "m" }, [assocLabel(m.assoc), document.createTextNode(" · " + m.where + " · " + when + (m.about ? " · " + m.about : ""))]),
+            parlNewPill(key)]),
           el("span", { class: "w" }, [document.createTextNode(m.who), m.role ? el("span", { text: " · " + m.role }) : null]),
           safeLink(m.link) ? el("a", { class: "q", href: m.link, target: "_blank", rel: "noopener" }, [marked(m.quote, m.term)]) : marked(m.quote, m.term)
         ])]));
