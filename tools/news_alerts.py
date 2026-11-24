@@ -680,7 +680,7 @@ AI_SCHEMA = {
 
 
 def item_id(it) -> str:
-    return hashlib.sha1((it["link"] or it["title"]).encode()).hexdigest()[:16]
+    return hashlib.sha1((it.get("link") or it["title"]).encode()).hexdigest()[:16]
 
 
 def known_stories(news_items, now, days=5, limit=40):
@@ -1075,9 +1075,10 @@ def read_source(src, feed_override):
             it["max_age"] = src["max_age_hours"]
         if src.get("parl"):
             # Feed titles look like "Business of Supply / Jane Doe" or " / Jane Doe".
-            ctx, _, who = it["title"].rpartition(" / ")
-            ctx, who = ctx.strip(), who.strip() or "A speaker"
-            it["title"] = f"In Parliament: {who} on {src['parl']}" + (f" ({ctx})" if ctx else "")
+            m = re.match(r"^(.*?)\s*/\s*(.+)$", it["title"])
+            ctx, who = (m.group(1).strip(), m.group(2).strip()) if m else ("", it["title"].strip() or "A speaker")
+            day = datetime.fromtimestamp(it["ts"]).strftime("%b %-d")
+            it["title"] = f"In Parliament, {day}: {who} on {src['parl']}" + (f" ({ctx})" if ctx else "")
             it["force_topic"] = src["topic"]
         if src["id"].startswith("feed:"):
             # Only search results end in " - Outlet"; keep direct-feed titles whole
@@ -1119,14 +1120,15 @@ def probe(urls):
 
 
 def check_feeds(server, topic, feed_override):
-    rows, bad, quiet = [], [], []
+    rows, bad, quiet, audit = [], [], [], []
+    verbose = os.environ.get("CHECK_VERBOSE") == "1"
     for src, items, err in read_all(feed_override):
         try:
             if err:
                 raise err
             rel = sum(1 for it in items if classify(it))
             rows.append(f"OK   {src['id']:<28} {len(items):>3} items, {rel} relevant")
-            if src["id"].startswith("feed:"):
+            if src["id"].startswith("feed:") and (verbose or src["id"].startswith("feed:parl-")):
                 for it in items[:2]:
                     rows.append(f"       e.g. {it['title'][:110]!r} | {it['desc'][:110]!r}")
                 if not items and not feed_override:
@@ -1141,13 +1143,17 @@ def check_feeds(server, topic, feed_override):
                     try:
                         wk = list(parse(fetch(src["url"].replace("when%3A1d", "when%3A7d"))))
                         q = urllib.parse.unquote(src["url"].split("&q=", 1)[1])
-                        rows.append(f"       7-day retry: {len(wk)} items | {q}")
+                        audit.append((len(wk), src["id"], q.replace(" when:1d", "")))
                     except Exception as e:
                         rows.append(f"       7-day retry failed: {e}")
         except Exception as e:
             rows.append(f"FAIL {src['id']:<28} {e}")
             bad.append(src["id"])
     print("\n".join(rows))
+    if audit:
+        print("SEARCH AUDIT: Google searches with nothing in the last day, and how many they find over 7 days")
+        for n, sid, q in sorted(audit):
+            print(f"  {n:>3} in 7 days | {sid:<26} | {q}")
     total = sum(1 for row in rows if row.startswith(("OK ", "FAIL ")))
     msg = f"{total - len(bad)}/{total} sources working."
     if bad:
