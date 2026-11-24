@@ -30,6 +30,7 @@ MIN_ARTICLES = 3          # a thread becomes a tracked story once it has this ma
 MAX_NEW = 3               # keystones added per story per day (5 on a day with CRITICAL news)
 MAX_ACTIVE = 14
 MAX_PARTS = 6
+PROVISIONAL_HOURS = 48    # a fact reported only by unfamiliar outlets is held this long for a trusted one to confirm it
 QUIET_DAYS = 60           # no articles for this long: the story stops being offered for grouping
 FORGET_DAYS = 180
 
@@ -52,7 +53,12 @@ Reuse an existing part whenever one fits; add a new one only for a genuinely sep
 - "articles" lists the numbers of the new articles that report it. At least one.
 - If a new keystone makes an existing one obsolete (a deadline moved, a decision reversed, a figure \
 changed), list that in "replaces" with the old keystone's id. Otherwise leave "replaces" empty.
-- Ignore any article that is not actually about this story.
+- Each article is marked "trusted" or "unverified" by its outlet. Cite trusted outlets whenever one reports the \
+fact. A fact reported only by unverified outlets may still be added if it is an important breaking development; \
+it is held as unconfirmed.
+- Keystones marked "(unconfirmed)" are waiting for a trusted outlet. If a new trusted article reports the same \
+fact, list it in "confirm" with the keystone's id and the article numbers instead of adding it again.
+- Ignore any article that is not actually about this story, even if it shares the broad subject.
 - "stands" is where the story stands today in at most two sentences, based on the keystones. If nothing \
 changed, return the current text unchanged."""
 
@@ -60,6 +66,10 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "stands": {"type": "string"},
+        "confirm": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"key": {"type": "string"}, "articles": {"type": "array", "items": {"type": "integer"}}},
+            "required": ["key", "articles"], "additionalProperties": False}},
         "add": {"type": "array", "items": {
             "type": "object",
             "properties": {"date": {"type": "string"}, "part": {"type": "string"}, "text": {"type": "string"},
@@ -67,7 +77,7 @@ SCHEMA = {
                            "replaces": {"type": "array", "items": {"type": "string"}}},
             "required": ["date", "part", "text", "articles", "replaces"], "additionalProperties": False}},
     },
-    "required": ["stands", "add"], "additionalProperties": False,
+    "required": ["stands", "add", "confirm"], "additionalProperties": False,
 }
 
 
@@ -99,15 +109,16 @@ def alike(a: str, b: str) -> bool:
     return bool(x and y) and len(x & y) / min(len(x), len(y)) >= 0.75
 
 
-def ask_claude(story, fresh, now):
+def ask_claude(story, fresh, now, trusted=lambda a: True):
     """Claude's proposed changes for one story, or None if unavailable."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     import anthropic
     active = [k for k in story["keys"] if not k.get("replaced_by")]
-    record = "\n".join(f"{k['id']} | {k['date']} | {k['part']} | {k['text']}" for k in active) or "(none yet)"
+    record = "\n".join(f"{k['id']} | {k['date']} | {k['part']} | {k['text']}" + (" (unconfirmed)" if k.get("prov") else "")
+                       for k in active) or "(none yet)"
     arts = "\n".join(
-        f"{n}. {day_of(a['published'])} | level {a['level']} | {a['source']} | {a['title']}"
+        f"{n}. {day_of(a['published'])} | level {a['level']} | {a['source']} ({'trusted' if trusted(a) else 'unverified'}) | {a['title']}"
         + (f" - {a['summary'][:350]}" if a.get("summary") else "") for n, a in enumerate(fresh))
     prompt = (f"Today is {day_of(now)}.\nStory: {story['name']} ({story['assoc']})\n"
               f"Parts so far: {', '.join(story['parts']) or '(none)'}\n"
@@ -123,7 +134,25 @@ def ask_claude(story, fresh, now):
     return json.loads(next(b.text for b in resp.content if b.type == "text"))
 
 
-def apply(story, fresh, out, now):
+def sources(cited, trusted, now):
+    """(source list, provisional?) for a keystone: trusted outlets only when any reported it."""
+    good = [a for a in cited if trusted(a)]
+    use = good or cited
+    return [{"title": a["title"][:160], "source": a["source"], "link": a["link"]} for a in use[:3]], not good
+
+
+def confirm(key, cited, trusted, now):
+    """A trusted outlet now reports an unconfirmed keystone: swap its sources and make it permanent."""
+    src, prov = sources(cited, trusted, now)
+    if key.get("prov") and not prov:
+        key["src"] = src
+        key.pop("prov", None)
+        key.pop("prov_until", None)
+        return True
+    return False
+
+
+def apply(story, fresh, out, now, trusted=lambda a: True):
     """Check Claude's proposal and fold what passes into the story. Returns how many keystones were added."""
     today = day_of(now)
     limit = 5 if any(a["level"] >= 5 for a in fresh) else MAX_NEW
@@ -136,7 +165,9 @@ def apply(story, fresh, out, now):
                  if isinstance(n, int) and 0 <= n < len(fresh)][:3]
         if not cited or not 20 <= len(text) <= 260:
             continue
-        if any(alike(text, k["text"]) for k in story["keys"]):
+        twin = next((k for k in story["keys"] if alike(text, k["text"])), None)
+        if twin:   # already on record; a trusted outlet repeating an unconfirmed fact confirms it
+            confirm(twin, cited, trusted, now)
             continue
         earliest = min(day_of(a["published"]) for a in cited)
         date = str(prop.get("date") or "")
@@ -158,14 +189,21 @@ def apply(story, fresh, out, now):
                 story["parts"].append(part)
                 match = part
         story["seq"] = story.get("seq", 0) + 1
-        key = {"id": f"k{story['seq']}", "date": date, "part": match, "text": text, "added": int(now),
-               "src": [{"title": a["title"][:160], "source": a["source"], "link": a["link"]} for a in cited]}
+        src, prov = sources(cited, trusted, now)
+        key = {"id": f"k{story['seq']}", "date": date, "part": match, "text": text, "added": int(now), "src": src}
+        if prov:
+            key["prov"], key["prov_until"] = True, int(now + PROVISIONAL_HOURS * 3600)
         for old_id in prop.get("replaces") or []:
             old = next((k for k in story["keys"] if k["id"] == old_id and not k.get("replaced_by")), None)
             if old:
                 old["replaced_by"] = key["id"]
         story["keys"].append(key)
         added += 1
+    for c in out.get("confirm") or []:
+        key = next((k for k in story["keys"] if k["id"] == c.get("key")), None)
+        cited = [fresh[n] for n in c.get("articles") or [] if isinstance(n, int) and 0 <= n < len(fresh)]
+        if key and cited:
+            confirm(key, cited, trusted, now)
     stands = re.sub(r"\s+", " ", str(out.get("stands") or "")).strip()
     if 20 <= len(stands) <= 420 and stands != story.get("stands"):
         story["stands"], story["stands_at"] = stands, int(now)
@@ -180,9 +218,9 @@ def apply(story, fresh, out, now):
     return added
 
 
-def update(news, news_path, now, asker=None, force=False):
+def update(news, news_path, now, asker=None, force=False, trusted=lambda a: True):
     """Run today's pass for a few stories, then attach each story's record to the news data."""
-    asker = asker or ask_claude
+    asker = asker or (lambda s, fresh, now: ask_claude(s, fresh, now, trusted))
     path = stories_path(news_path)
     data = load(path)
     stories = data["stories"]
@@ -214,7 +252,7 @@ def update(news, news_path, now, asker=None, force=False):
             out = asker(s, fresh, now)
             if out is None:
                 raise RuntimeError("no answer")
-            n = apply(s, fresh, out, now)
+            n = apply(s, fresh, out, now, trusted)
             s["done_day"], s["tries"] = today, 0
             notes.append(f"{s['name'][:30]} +{n}")
         except Exception as e:
@@ -226,6 +264,8 @@ def update(news, news_path, now, asker=None, force=False):
     for tid in [t for t, s in stories.items() if now - s.get("last_article", s["created"]) > FORGET_DAYS * 86400]:
         del stories[tid]
     for s in stories.values():
+        # Unconfirmed facts that no trusted outlet picked up in time are dropped.
+        s["keys"] = [k for k in s["keys"] if not (k.get("prov") and now > k.get("prov_until", 0))]
         s["digested"] = {k: v for k, v in s["digested"].items() if now - v < 30 * 86400}
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
@@ -237,7 +277,7 @@ def update(news, news_path, now, asker=None, force=False):
     # What the page needs, for stories that currently have articles.
     news["stories"] = {
         tid: {"name": s["name"], "stands": s.get("stands", ""), "parts": s["parts"],
-              "keys": [{"date": k["date"], "part": k["part"], "text": k["text"], "src": k["src"]}
+              "keys": [{"date": k["date"], "part": k["part"], "text": k["text"], "src": k["src"], "prov": bool(k.get("prov"))}
                        for k in sorted(s["keys"], key=lambda k: k["date"], reverse=True) if not k.get("replaced_by")],
               "digested": sorted(s["digested"])}
         for tid, s in stories.items() if tid in threads and s["keys"]}
@@ -261,10 +301,10 @@ def debug(na):
     import tempfile
     import time
     news = json.loads(na.fetch("https://raw.githubusercontent.com/ethanlaneday/news-alerts/news-data/news.json"))
-    update(news, os.path.join(tempfile.mkdtemp(), "news.json"), time.time(), force=True)
+    update(news, os.path.join(tempfile.mkdtemp(), "news.json"), time.time(), force=True, trusted=na.trusted_record)
     for s in news.get("stories", {}).values():
         print(f"STORY {s['name']} | parts {s['parts']} | {len(s['digested'])} articles read")
         print(f"   stands: {s['stands']}")
         for k in s["keys"]:
-            print(f"   {k['date']} [{k['part']}] {k['text']} <- {', '.join(x['source'] for x in k['src'])}")
+            print(f"   {k['date']} [{k['part']}]{' UNCONFIRMED' if k['prov'] else ''} {k['text']} <- {', '.join(x['source'] for x in k['src'])}")
     return 0
