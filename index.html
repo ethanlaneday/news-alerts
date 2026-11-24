@@ -89,6 +89,22 @@ article.unseen { border-color: var(--new-line); }
   background: var(--new-bg); color: var(--new-fg); }
 .newpill.done { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .all-seen { margin: 0 4px 22px; font-size: 14px; color: var(--muted); }
+.search { width: 100%; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--chip-line);
+  background: var(--card); color: var(--text); font-size: 16px; font-family: inherit; -webkit-appearance: none; appearance: none; }
+.search::placeholder { color: var(--muted); }
+.row.scroll { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  margin: 0 -16px; padding: 0 16px 2px; }
+.row.scroll::-webkit-scrollbar { display: none; }
+.row.scroll .chip { flex: none; min-height: 34px; padding: 0 12px; font-size: 13px; }
+.story { font-size: 12px; color: var(--muted); font-weight: 600; }
+.updates { list-style: none; margin: 2px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 10px; }
+.updates li { display: flex; flex-direction: column; gap: 2px; }
+.updates a, .updates .t { font-size: 14px; font-weight: 500; line-height: 1.35; color: var(--text); text-decoration: none; }
+.updates a:hover, .updates a:focus-visible { text-decoration: underline; }
+.updates .m { font-size: 12px; color: var(--muted); }
+.thread-btn { align-self: flex-start; min-height: 36px; padding: 0; border: none; background: transparent; color: var(--unread);
+  font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
 .empty, .error { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 12px; }
 .foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
 </style>
@@ -103,7 +119,9 @@ article.unseen { border-color: var(--new-line); }
       </button>
     </div>
     <p class="meta" id="meta">Loading…</p>
+    <input class="search" id="q" type="search" placeholder="Search headlines" aria-label="Search headlines" autocomplete="off" enterkeyhint="search">
     <div class="row" role="group" aria-label="Association" id="assocChips"></div>
+    <div class="row scroll" role="group" aria-label="Topic" id="topicChips"></div>
     <div class="row" role="group" aria-label="Time range" id="rangeChips"></div>
   </header>
   <div id="brief"></div>
@@ -140,6 +158,8 @@ article.unseen { border-color: var(--new-line); }
     newIds: {},
     briefOpen: load("news.briefOpen", false),                            // unseen when the data was loaded; stay in "New" until the next refresh
     showNewFyi: false,
+    query: "", topic: "all",
+    open: {},                              // threads whose other articles are expanded
     fetchedAt: 0                           // when this device last got fresh data
   };
 
@@ -152,9 +172,10 @@ article.unseen { border-color: var(--new-line); }
     }
     save("news.seenIds", state.seenIds);
   }
-  function markSeen(id, card) {
-    if (state.seenIds[id]) return;
-    state.seenIds[id] = 1;
+  function markSeen(ids, card) {
+    ids = String(ids).split(",").filter(function (id) { return id && !state.seenIds[id]; });
+    if (!ids.length) return;
+    ids.forEach(function (id) { state.seenIds[id] = 1; });
     saveSeen();
     if (card) {
       var pill = card.querySelector(".newpill");
@@ -166,7 +187,7 @@ article.unseen { border-color: var(--new-line); }
     entries.forEach(function (e) {
       var card = e.target;
       if (e.isIntersecting && e.intersectionRatio >= 0.6) {
-        if (!card._seenTimer) card._seenTimer = setTimeout(function () { markSeen(card.dataset.id, card); watcher.unobserve(card); }, 1000);
+        if (!card._seenTimer) card._seenTimer = setTimeout(function () { markSeen(card.dataset.ids, card); watcher.unobserve(card); }, 1000);
       } else if (card._seenTimer) { clearTimeout(card._seenTimer); card._seenTimer = null; }
     });
   }, { threshold: [0, 0.6, 1] }) : null;
@@ -208,39 +229,99 @@ article.unseen { border-color: var(--new-line); }
     var d = state.data, now = Date.now() / 1000;
     var span = state.range === "day" ? 86400 : 7 * 86400;
     var inRange = d.items.filter(function (i) { return now - i.seen < span; });
-    return { inRange: inRange, shown: inRange.filter(function (i) { return state.assoc === "all" || i.assoc === state.assoc; }) };
+    var byAssoc = inRange.filter(function (i) { return state.assoc === "all" || i.assoc === state.assoc; });
+    var q = state.query.trim().toLowerCase();
+    var shown = byAssoc.filter(function (i) {
+      if (state.topic !== "all" && i.topic !== state.topic) return false;
+      if (!q) return true;
+      return [i.title, i.summary, i.why, i.source, i.topic, i.story].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+    return { inRange: inRange, byAssoc: byAssoc, shown: shown };
   }
+  function byImportance(a, b) { return b.level - a.level || b.seen - a.seen || b.published - a.published; }
+  function levelOf(n) { return LEVELS.filter(function (L) { return L.n === n; })[0] || LEVELS[LEVELS.length - 1]; }
+
+  // One card per ongoing story: articles that share a thread are grouped.
+  function threads(items) {
+    var map = {}, out = [];
+    items.forEach(function (i) {
+      var t = i.thread || i.id;
+      if (!map[t]) { map[t] = { tid: t, items: [], story: "" }; out.push(map[t]); }
+      map[t].items.push(i);
+      if (i.story && !map[t].story) map[t].story = i.story;
+    });
+    out.forEach(function (t) {
+      t.fresh = t.items.filter(function (i) { return state.newIds[i.id]; }).sort(byImportance);
+      t.isNew = t.fresh.length > 0;
+      // Lead with the most important new article; otherwise the most important one overall.
+      t.lead = (t.isNew ? t.fresh : t.items.slice().sort(byImportance))[0];
+      t.rest = t.items.filter(function (i) { return i !== t.lead; }).sort(function (a, b) { return b.seen - a.seen; });
+    });
+    return out;
+  }
+  function byLead(a, b) { return byImportance(a.lead, b.lead); }
+
   function updateMeta() {
     var d = state.data, meta = document.getElementById("meta");
     if (!d) return;
-    var unseen = filtered().shown.filter(function (i) { return !state.seenIds[i.id]; }).length;
+    var n = threads(filtered().shown).filter(function (t) {
+      return t.items.some(function (i) { return !state.seenIds[i.id]; });
+    }).length;
     meta.textContent = "";
-    meta.appendChild(el("strong", { text: unseen + " new" }));
+    meta.appendChild(el("strong", { text: n + " new" }));
     meta.appendChild(document.createTextNode(" · news updated " + (d.checked ? ago(d.checked) : "—") +
       (state.fetchedAt ? " · checked " + ago(state.fetchedAt) : "")));
   }
-  function byImportance(a, b) { return b.level - a.level || b.seen - a.seen || b.published - a.published; }
-  function levelOf(n) { return LEVELS.filter(function (L) { return L.n === n; })[0]; }
 
-  function makeCard(i, isNew) {
+  function titleNode(i, card, ids) {
     var link = safeLink(i.link);
-    var title = link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", text: i.title }) : el("span", { text: i.title });
+    if (!link) return el("span", { class: "t", text: i.title });
+    var a = el("a", { href: link, target: "_blank", rel: "noopener noreferrer", text: i.title });
+    a.addEventListener("click", function () { markSeen(ids, card()); });
+    return a;
+  }
+
+  function makeCard(t, inNew) {
+    var i = t.lead, L = levelOf(i.level), card;
+    var ids = t.items.map(function (x) { return x.id; }).join(",");
+    var unseen = t.items.some(function (x) { return !state.seenIds[x.id]; });
     var info = [i.topic !== i.assoc ? i.topic : null, i.source, ago(i.published)].filter(Boolean).join(" · ");
-    var L = levelOf(i.level);
     var infoRow = [el("span", { class: "tag " + i.assoc, text: i.assoc })];
-    if (isNew) infoRow.push(el("span", { class: "lvl-word", text: L.label, style: "font-weight:700;letter-spacing:.06em;color:" + L.color }));
+    if (inNew) infoRow.push(el("span", { text: L.label, style: "font-weight:700;letter-spacing:.06em;color:" + L.color }));
     infoRow.push(el("span", { text: info }));
-    var head = [title];
-    if (isNew) head.unshift(state.seenIds[i.id] ? el("span", { class: "newpill done", text: "SEEN" }) : el("span", { class: "newpill", text: "NEW" }));
-    var card = el("article", { class: isNew ? "unseen" : "", "data-id": i.id }, [
+    var head = [titleNode(i, function () { return card; }, ids)];
+    if (inNew) head.unshift(unseen ? el("span", { class: "newpill", text: "NEW" }) : el("span", { class: "newpill done", text: "SEEN" }));
+
+    var extra = null, list = null;
+    if (t.rest.length) {
+      var newRest = t.rest.filter(function (x) { return state.newIds[x.id]; }).length;
+      var isOpen = !!state.open[t.tid];
+      var label = isOpen ? "Hide other articles"
+        : (newRest && inNew ? newRest + " more new · " : "") + t.rest.length + " more on this story";
+      extra = el("button", { type: "button", class: "thread-btn", "aria-expanded": String(isOpen), text: label,
+        onclick: function () { state.open[t.tid] = !isOpen; render(); } });
+      if (isOpen) {
+        list = el("ul", { class: "updates" });
+        t.rest.forEach(function (x) {
+          var XL = levelOf(x.level);
+          list.appendChild(el("li", null, [
+            titleNode(x, function () { return card; }, x.id),
+            el("span", { class: "m", text: [state.newIds[x.id] ? "New" : null, XL.n === 2 ? "FYI" : XL.label.charAt(0) + XL.label.slice(1).toLowerCase(),
+              x.source, ago(x.published)].filter(Boolean).join(" · ") })
+          ]));
+        });
+      }
+    }
+    card = el("article", { class: inNew ? "unseen" : "", "data-ids": ids }, [
       el("div", { class: "info" }, infoRow),
+      t.story && t.items.length > 1 ? el("div", { class: "story", text: t.story + " · " + t.items.length + " articles" }) : null,
       el("div", { class: "headline" }, head),
       i.summary ? el("p", { class: "summary", text: i.summary }) : null,
       i.why ? el("p", { class: "why" }, [el("strong", { text: "Why it matters: " }), document.createTextNode(i.why)]) : null,
-      !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null
+      !i.why && i.signals ? el("p", { class: "signals", text: "Signals: " + i.signals }) : null,
+      extra, list
     ]);
-    if (link) title.addEventListener("click", function () { markSeen(i.id, card); });
-    if (isNew && !state.seenIds[i.id] && watcher) watcher.observe(card);
+    if (inNew && unseen && watcher) watcher.observe(card);
     return card;
   }
 
@@ -252,18 +333,28 @@ article.unseen { border-color: var(--new-line); }
     if (watcher) watcher.disconnect();
     if (!d) return;
 
-    var f = filtered(), inRange = f.inRange, shown = f.shown;
+    var f = filtered(), inRange = f.inRange;
+    // Topic chips come from what's in view; drop a selected topic that no longer has stories.
+    var topicCount = {};
+    f.byAssoc.forEach(function (i) { topicCount[i.topic] = (topicCount[i.topic] || 0) + 1; });
+    if (state.topic !== "all" && !topicCount[state.topic]) { state.topic = "all"; f = filtered(); }
+    var shown = f.shown;
     updateMeta();
 
-    function count(a) { return inRange.filter(function (i) { return a === "all" || i.assoc === a; }).length; }
+    function count(a) { return threads(inRange.filter(function (i) { return a === "all" || i.assoc === a; })).length; }
     chips(document.getElementById("assocChips"),
       [{ key: "all", label: "All", count: count("all") }, { key: "CADA", label: "CADA", count: count("CADA") }, { key: "HEAL", label: "HEAL", count: count("HEAL") }],
       state.assoc, function (k) { state.assoc = k; save("news.assoc", k); render(); });
+    var topics = Object.keys(topicCount).sort(function (a, b) { return topicCount[b] - topicCount[a] || a.localeCompare(b); });
+    chips(document.getElementById("topicChips"),
+      [{ key: "all", label: "All topics" }].concat(topics.map(function (t) { return { key: t, label: t }; })),
+      state.topic, function (k) { state.topic = k; render(); });
     chips(document.getElementById("rangeChips"),
       [{ key: "day", label: "Last 24 hours" }, { key: "week", label: "This week" }],
       state.range, function (k) { state.range = k; save("news.range", k); render(); });
 
-    if (d.brief && (d.brief.CADA || d.brief.HEAL)) {
+    var searching = state.query.trim() !== "";
+    if (!searching && state.topic === "all" && d.brief && (d.brief.CADA || d.brief.HEAL)) {
       var b = el("section", { class: "brief" + (state.briefOpen ? "" : " clamped"), "aria-label": "Today in brief" },
         [el("h2", { text: "TODAY IN BRIEF · " + ago(d.brief.at) })]);
       ["CADA", "HEAL"].forEach(function (a) {
@@ -278,43 +369,46 @@ article.unseen { border-color: var(--new-line); }
     }
 
     if (!shown.length) {
-      list.appendChild(el("p", { class: "empty", text: "Nothing yet for this view. New stories appear here as the alerts find them." }));
+      list.appendChild(el("p", { class: "empty", text: searching || state.topic !== "all"
+        ? "No stories match. Try another word, topic, or \"This week\"."
+        : "Nothing yet for this view. New stories appear here as the alerts find them." }));
       return;
     }
 
-    // ---- NEW: stories that were unseen when this data loaded, most important first
-    var fresh = shown.filter(function (i) { return state.newIds[i.id]; }).sort(byImportance);
-    var freshMain = fresh.filter(function (i) { return i.level >= 3; });
-    var freshFyi = fresh.filter(function (i) { return i.level < 3; });
+    var all = threads(shown);
+    // ---- NEW: stories with something unseen when this data loaded, most important first
+    var fresh = all.filter(function (t) { return t.isNew; }).sort(byLead);
+    var freshMain = fresh.filter(function (t) { return t.lead.level >= 3; });
+    var freshFyi = fresh.filter(function (t) { return t.lead.level < 3; });
     if (fresh.length) {
       var g = el("section", { class: "group-new", "aria-label": "New since you last looked" }, [
         el("div", { class: "group-head" }, [
           el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + fresh.length })]),
           el("button", { type: "button", class: "link-btn", text: "Mark all seen", onclick: function () {
-            fresh.forEach(function (i) { state.seenIds[i.id] = 1; });
-            saveSeen(); state.newIds = {}; render(); window.scrollTo(0, 0);
+            fresh.forEach(function (t) { t.items.forEach(function (i) { state.seenIds[i.id] = 1; delete state.newIds[i.id]; }); });
+            saveSeen(); render(); window.scrollTo(0, 0);
           } })
         ])
       ]);
       var cards = el("div", { class: "cards" });
-      freshMain.forEach(function (i) { cards.appendChild(makeCard(i, true)); });
-      if (freshFyi.length && state.showNewFyi) freshFyi.forEach(function (i) { cards.appendChild(makeCard(i, true)); });
+      freshMain.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
+      if (freshFyi.length && state.showNewFyi) freshFyi.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
       g.appendChild(cards);
       if (freshFyi.length) g.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
         text: state.showNewFyi ? "Hide quieter new stories" : "Show " + freshFyi.length + " quieter new stories",
         onclick: function () { state.showNewFyi = !state.showNewFyi; render(); } }));
       list.appendChild(g);
-    } else {
+    } else if (!searching) {
       list.appendChild(el("p", { class: "all-seen", text: "You're all caught up. Nothing new since you last looked." }));
     }
 
-    // ---- EARLIER: everything already seen, grouped by importance as before
-    var earlier = shown.filter(function (i) { return !state.newIds[i.id]; });
+    // ---- EARLIER: stories already seen, grouped by importance
+    var earlier = all.filter(function (t) { return !t.isNew; });
     if (!earlier.length) return;
     var wrap = el("div", { class: "group-earlier" }, [el("div", { class: "group-head" }, [
       el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])])]);
     LEVELS.forEach(function (L) {
-      var items = earlier.filter(function (i) { return i.level === L.n; }).sort(byImportance);
+      var items = earlier.filter(function (t) { return levelOf(t.lead.level).n === L.n; }).sort(byLead);
       if (!items.length) return;
       var sec = el("section", { class: "level", "aria-label": L.label }, [
         el("div", { class: "lvl-head" }, [
@@ -323,16 +417,16 @@ article.unseen { border-color: var(--new-line); }
           el("span", { class: "count", text: String(items.length) })
         ])
       ]);
-      if (L.n === 2 && !state.showFyi) {
+      if (L.n === 2 && !state.showFyi && !searching) {
         sec.appendChild(el("button", { type: "button", class: "more", text: "Show " + items.length + " quieter stories",
           onclick: function () { state.showFyi = true; render(); } }));
         wrap.appendChild(sec);
         return;
       }
       var cards = el("div", { class: "cards" });
-      items.forEach(function (i) { cards.appendChild(makeCard(i, false)); });
+      items.forEach(function (t) { cards.appendChild(makeCard(t, false)); });
       sec.appendChild(cards);
-      if (L.n === 2) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
+      if (L.n === 2 && !searching) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
         onclick: function () { state.showFyi = false; render(); } }));
       wrap.appendChild(sec);
     });
@@ -385,6 +479,7 @@ article.unseen { border-color: var(--new-line); }
     if (document.visibilityState === "visible") refresh();
   });
   document.getElementById("refresh").addEventListener("click", refresh);
+  document.getElementById("q").addEventListener("input", function (e) { state.query = e.target.value; render(); });
   setInterval(function () { if (document.visibilityState === "visible") refresh(); }, 5 * 60 * 1000);
   refresh();
 })();
