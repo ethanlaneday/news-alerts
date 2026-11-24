@@ -989,6 +989,143 @@ def merge_taps(news):
         print(f"seen sync: {len(new)} stories marked seen from notification taps")
 
 
+# ---- Outlet icons, kept beside news.json so the page never depends on a third-party icon service.
+OUTLET_SITES = {
+    "cbc": "cbc.ca", "cbc news": "cbc.ca", "cbc.ca": "cbc.ca", "cbc windsor": "cbc.ca", "radio-canada": "radio-canada.ca",
+    "ctv news": "ctvnews.ca", "cp24": "cp24.com", "global news": "globalnews.ca", "citynews": "citynews.ca",
+    "globe and mail": "theglobeandmail.com", "toronto star": "thestar.com", "national post": "nationalpost.com",
+    "financial post": "financialpost.com", "toronto sun": "torontosun.com", "ottawa citizen": "ottawacitizen.com",
+    "windsor star": "windsorstar.com", "vancouver sun": "vancouversun.com", "montreal gazette": "montrealgazette.com",
+    "calgary herald": "calgaryherald.com", "la presse": "lapresse.ca", "canadian press": "thecanadianpress.com",
+    "bnn bloomberg": "bnnbloomberg.ca", "bloomberg": "bloomberg.com", "reuters": "reuters.com", "politico": "politico.com",
+    "hill times": "hilltimes.com", "ipolitics": "ipolitics.ca", "national newswatch": "nationalnewswatch.com",
+    "logic": "thelogic.co", "hub": "thehub.ca", "walrus": "thewalrus.ca", "tyee": "thetyee.ca", "macleans": "macleans.ca",
+    "policy options": "policyoptions.irpp.org", "conversation canada": "theconversation.com", "cpac": "cpac.ca",
+    "yahoo news canada": "yahoo.com", "yahoo finance canada": "yahoo.com", "rebel news": "rebelnews.com",
+    "automotive news": "autonews.com", "automotive news canada": "autonews.com", "driving.ca": "driving.ca",
+    "electric autonomy canada": "electricautonomy.ca", "canadian auto dealer": "canadianautodealer.ca",
+    "motor1.com": "motor1.com", "ford authority": "fordauthority.com", "just auto": "just-auto.com", "cbt news": "cbtnews.com",
+    "canadian automobile dealers association (cada)": "cada.ca", "hospital news": "hospitalnews.com",
+    "canadian medical association": "cma.ca", "government of canada": "canada.ca", "bank of canada": "bankofcanada.ca",
+    "parliament (hansard)": "ourcommons.ca", "parliament of canada (legisinfo)": "parl.ca", "am 800 cklw": "iheartradio.ca",
+}
+ICONS_PER_RUN = 15
+ICON_RETRY_DAYS = 7
+BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+
+
+def outlet_site(rec) -> str:
+    """Best guess at an outlet's site: the one recorded with the story, else a known outlet name."""
+    if rec.get("domain"):
+        return rec["domain"]
+    name = re.split(r"\s[|–—-]\s", rec.get("source") or "")[0].strip().lower()
+    name = re.sub(r"^the\s+", "", name)
+    if name in OUTLET_SITES:
+        return OUTLET_SITES[name]
+    return name if re.fullmatch(r"[a-z0-9\-]+(\.[a-z0-9\-]+)+", name) else ""
+
+
+def image_ext(data: bytes) -> str:
+    """File extension for image bytes we are willing to serve, else ''. Skips tiny placeholder PNGs."""
+    if not 150 <= len(data) <= 400_000:
+        return ""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png" if int.from_bytes(data[16:20], "big") >= 32 else ""
+    if data[:2] == b"\xff\xd8":
+        return "jpg"
+    if data[:4] == b"\x00\x00\x01\x00":
+        return "ico"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[:4] == b"GIF8":
+        return "gif"
+    return ""
+
+
+def get_bytes(url: str, timeout: float = 6) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": BROWSER_UA, "Accept": "image/*,text/html;q=0.9,*/*;q=0.5"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(600_000)
+
+
+def fetch_icon(domain: str):
+    """(bytes, ext) for an outlet's icon: its own home-screen icon when it offers one, else a favicon service."""
+    urls = [f"https://www.{domain}/apple-touch-icon.png", f"https://{domain}/apple-touch-icon.png"]
+    try:  # the icon the site itself advertises
+        html = get_bytes(f"https://{domain}/").decode("utf-8", "replace")
+        for tag in re.findall(r"<link\b[^>]*>", html, re.I):
+            if re.search(r"""rel=["'][^"']*apple-touch-icon""", tag, re.I):
+                href = re.search(r"""href=["']([^"']+)""", tag, re.I)
+                if href:
+                    urls.insert(0, urllib.parse.urljoin(f"https://{domain}/", href.group(1).replace("&amp;", "&")))
+                    break
+    except Exception:
+        pass
+    urls += [f"https://www.google.com/s2/favicons?sz=128&domain={domain}",
+             f"https://icons.duckduckgo.com/ip3/{domain}.ico", f"https://{domain}/favicon.ico"]
+    for u in urls:
+        try:
+            data = get_bytes(u)
+        except Exception:
+            continue
+        ext = image_ext(data)
+        if ext:
+            return data, ext
+    return None, ""
+
+
+def update_icons(news, path, now, fetcher=None):
+    """Save an icon for each outlet on the page (a few new ones per run) and point each story at its file."""
+    fetcher = fetcher or fetch_icon
+    folder = os.path.join(os.path.dirname(path) or ".", "icons")
+    os.makedirs(folder, exist_ok=True)
+    idx_path = os.path.join(folder, "index.json")
+    try:
+        with open(idx_path) as f:
+            idx = json.load(f)
+    except Exception:
+        idx = {}
+    count = {}
+    for rec in news["items"]:
+        dom = outlet_site(rec)
+        if dom and re.fullmatch(r"[a-z0-9.\-]{3,80}", dom) and ".." not in dom:
+            rec["domain"] = dom
+            count[dom] = count.get(dom, 0) + 1
+    got = 0
+    deadline = time.time() + 60
+    for dom in sorted(count, key=lambda d: -count[d]):
+        e = idx.get(dom)
+        if e and (e.get("f") and os.path.exists(os.path.join(folder, e["f"])) or
+                  not e.get("f") and now - e.get("at", 0) < ICON_RETRY_DAYS * 86400):
+            continue
+        if got >= ICONS_PER_RUN or time.time() > deadline:
+            break
+        got += 1
+        data, ext = fetcher(dom)
+        name = f"{dom}.{ext}" if data else ""
+        if data:
+            with open(os.path.join(folder, name), "wb") as f:
+                f.write(data)
+        idx[dom] = {"f": name, "at": int(now)}
+    for rec in news["items"]:
+        f = (idx.get(rec.get("domain") or "") or {}).get("f")
+        if f and os.path.exists(os.path.join(folder, f)):
+            rec["icon"] = "icons/" + f
+        else:
+            rec.pop("icon", None)
+    with open(idx_path, "w") as f:
+        json.dump(idx, f, separators=(",", ":"), sort_keys=True)
+    if got:
+        print(f"outlet icons: tried {got}, {sum(1 for e in idx.values() if e.get('f'))} saved in total")
+
+
+def safe_icons(news, path, now):
+    try:
+        update_icons(news, path, now)
+    except Exception as e:  # icons are a nicety; never let them stop the news
+        print(f"outlet icons failed: {e}", file=sys.stderr)
+
+
 def update_news(path, cands, now, force_brief=False):
     threshold_for_page = page_threshold
     news = load_news(path)
@@ -1013,6 +1150,7 @@ def update_news(path, cands, now, force_brief=False):
         if b:
             news["brief"] = b
     merge_taps(news)
+    safe_icons(news, path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
@@ -1091,6 +1229,7 @@ def backfill(server, topic, feed_override):
     if b:
         news["brief"] = b
     merge_taps(news)
+    safe_icons(news, path, now)
     news["checked"] = int(now)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path + ".tmp", "w") as f:
