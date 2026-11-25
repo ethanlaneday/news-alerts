@@ -195,6 +195,9 @@ ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(-
 ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
 .keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .story-head { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ongoing { align-self: center; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--muted); box-shadow: inset 0 0 0 1px var(--chip-line); white-space: nowrap; }
+.ongoing::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 999px; background: var(--unread); vertical-align: 1px; }
 .story-head .row1-r { display: flex; align-items: center; gap: 8px; flex: none; }
 .story-head .row1-r svg { width: 18px; height: 18px; color: var(--muted); }
 article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
@@ -625,7 +628,8 @@ article.unseen { border-color: var(--new-line); }
       var head = el("header", { class: "story-head", role: "button", tabindex: "0", "aria-expanded": String(!folded),
         onclick: function () { setFold(t, !folded); },
         onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFold(t, !folded); } } }, [
-        el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
+        el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null,
+            el("span", { class: "ongoing", text: "ONGOING" })]),
           el("span", { class: "row1-r" }, [lvlPill(i.level), chevron(!folded)])]),
         el("h3", { text: (st && st.name) || t.story || i.title }),
         el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
@@ -660,7 +664,7 @@ article.unseen { border-color: var(--new-line); }
               text: newArts.length === 1 ? "NEW ARTICLE" : newArts.length + " NEW ARTICLES" })]), newPill(unseen)]) : null,
             newArts.length ? na : null
           ]),
-          foldBar("Show full story")
+          foldBar("Show full story · " + t.items.length + " articles")
         ]);
         // New key developments shown here count as read once the card has been on screen.
         card._keys = freshKeys.map(function (k) { return keyId(t.tid, k); });
