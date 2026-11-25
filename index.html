@@ -340,7 +340,7 @@ article.unseen { border-color: var(--new-line); }
     fold: load("news.fold", {}),           // stories opened or collapsed by hand: thread -> { v, at }
     keySeen: load("news.keySeen", null),   // key developments already read on this device
     view: load("news.view", "news"),       // "news" or "parl"
-    parl: null, parlSeen: load("parl.seen", null), parlNew: {}, parlOpen: {}, parlMore: {}
+    parl: null, parlAt: 0, parlSeen: load("parl.seen", null), parlNew: {}, parlOpen: {}, parlMore: {}
   };
 
   // ---- Seen tracking: a story counts as seen once its card has been on screen for ~1 s, or is tapped.
@@ -424,6 +424,7 @@ article.unseen { border-color: var(--new-line); }
 
   function chips(container, options, current, onPick) {
     container.textContent = "";
+    if (!state.filtersOpen) return;   // the Filters bar is folded: nothing to draw
     options.forEach(function (o) {
       container.appendChild(el("button", {
         type: "button", class: "chip" + (o.cls ? " " + o.cls : ""), "aria-pressed": String(o.key === current),
@@ -800,6 +801,7 @@ article.unseen { border-color: var(--new-line); }
       box.appendChild(el("button", { type: "button", "aria-pressed": String(state.view === t[0]), onclick: function () {
         if (state.view === t[0]) return;
         state.view = t[0]; save("news.view", t[0]); render(); window.scrollTo(0, 0);
+        if (age(t[0] === "parl" ? state.parlAt : state.fetchedAt) > SWITCH_IF_OLDER) refresh();
       } }, [document.createTextNode(t[1]), t[0] === "parl" && n ? el("span", { class: "n", text: String(n) }) : null]));
     });
   }
@@ -1070,12 +1072,23 @@ article.unseen { border-color: var(--new-line); }
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .catch(function (e) { if (i + 1 < DATA_URLS.length) return getParl(i + 1); throw e; });
   }
+  // Only the tab you are on is kept fresh. The other tab's data is fetched once at the start (for the
+  // "new" count on the Parliament tab), then at most hourly, and again the moment you switch to it.
+  var OTHER_TAB_EVERY = 60 * 60, SWITCH_IF_OLDER = 5 * 60;
+  function age(at) { return Date.now() / 1000 - (at || 0); }
   function refreshParl() {
-    getParl(0).then(function (p) { state.parlNew = {}; setParl(p); render(); })
+    getParl(0).then(function (p) { state.parlNew = {}; state.parlAt = Date.now() / 1000; setParl(p); render(); })
       .catch(function () { if (!state.parl) { state.parl = { meetings: [], bills: [], mentions: [] }; render(); } });
   }
   function refresh() {
-    refreshParl();
+    var onParl = state.view === "parl";
+    if (onParl || !state.parl || age(state.parlAt) > OTHER_TAB_EVERY) refreshParl();
+    if (onParl && state.data && age(state.fetchedAt) < OTHER_TAB_EVERY) {
+      var p = document.getElementById("ptr");   // show the pull-down spinner briefly for the Parliament refresh
+      p.classList.add("spin", "settle"); p.style.opacity = "1"; p.style.transform = "translateY(0)";
+      setTimeout(function () { if (!loading) { p.classList.remove("spin"); p.style.opacity = "0"; p.style.transform = "translateY(-70px)"; } }, 700);
+      return;
+    }
     if (loading) return;
     loading = true;
     var btn = document.getElementById("ptr");
@@ -1171,7 +1184,7 @@ article.unseen { border-color: var(--new-line); }
   })();
   document.getElementById("q").addEventListener("input", function (e) { state.query = e.target.value; render(); });
   document.getElementById("filterBtn").addEventListener("click", function () {
-    state.filtersOpen = !state.filtersOpen; save("news.filtersOpen", state.filtersOpen); renderFilterBar();
+    state.filtersOpen = !state.filtersOpen; save("news.filtersOpen", state.filtersOpen); render();
   });
   setInterval(function () { if (document.visibilityState === "visible") { checkForUpdate(); refresh(); } }, 5 * 60 * 1000);
 
