@@ -195,6 +195,14 @@ ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(-
 ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
 .keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .story-head { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ongoing { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--unread); margin-bottom: -2px; }
+.strip-wrap { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.strip { display: flex; align-items: center; }
+.strip .d { flex: none; width: 9px; height: 9px; border-radius: 999px; background: var(--chip-line); }
+.strip .d.on { background: var(--note); } .strip .d.on.CADA { background: var(--cada); } .strip .d.on.HEAL { background: var(--heal); }
+.strip .ln { flex: 1; height: 2px; background: var(--line); }
+.strip-l { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+article.card.folded .story-head { padding-bottom: 10px; }
 .story-head .row1-r { display: flex; align-items: center; gap: 8px; flex: none; }
 .story-head .row1-r svg { width: 18px; height: 18px; color: var(--muted); }
 article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
@@ -322,11 +330,9 @@ article.unseen { border-color: var(--new-line); }
     data: null,
     assoc: load("news.assoc", "all"),
     range: load("news.range", "day"),
-    showFyi: false,
     seenIds: load("news.seenIds", null),  // stories this device has shown on screen (id -> 1)
     newIds: {},
     briefOpen: load("news.briefOpen", false),                            // unseen when the data was loaded; stay in "New" until the next refresh
-    showNewFyi: false,
     query: "", topic: "all",
     open: {},                              // threads whose other articles are expanded
     fetchedAt: 0,                          // when this device last got fresh data
@@ -461,10 +467,12 @@ article.unseen { border-color: var(--new-line); }
       // Lead with the most important new article; otherwise the most important one overall.
       t.lead = (t.isNew ? t.fresh : t.items.slice().sort(byImportance))[0];
       t.rest = t.items.filter(function (i) { return i !== t.lead; }).sort(function (a, b) { return b.seen - a.seen; });
+      // Where the story is filed: by its most important article, so a big story with a minor update stays up top.
+      t.level = Math.max.apply(null, t.items.map(function (i) { return i.level; }));
     });
     return out;
   }
-  function byLead(a, b) { return byImportance(a.lead, b.lead); }
+  function byLead(a, b) { return b.level - a.level || byImportance(a.lead, b.lead); }
 
   function updateMeta() {
     var d = state.data, meta = document.getElementById("meta");
@@ -622,14 +630,39 @@ article.unseen { border-color: var(--new-line); }
       var folded = isFolded(t, inNew);
       var keyIds = st ? st.keys.map(function (k) { return keyId(t.tid, k); }) : [];
       var freshKeys = st ? st.keys.filter(function (k) { return !state.keySeen[keyId(t.tid, k)]; }) : [];
+      // Timeline strip: one dot per day from the story's first day to today, filled on days with a development.
+      var dayKey = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
+      var marked = {}, firstDay = dayKey(new Date());
+      t.items.forEach(function (x) {
+        var k = dayKey(new Date(x.published * 1000));
+        if (k < firstDay) firstDay = k;
+        if (!st && x.dev !== false && x.level >= 3) marked[k] = 1;
+      });
+      (st ? st.keys : []).forEach(function (k) { marked[k.date] = 1; if (k.date < firstDay) firstDay = k.date; });
+      var strip = null, days = [], fp = firstDay.split("-"), cur = new Date(+fp[0], +fp[1] - 1, +fp[2]), endDay = dayKey(new Date());
+      while (dayKey(cur) <= endDay && days.length < 400) { days.push(dayKey(cur)); cur.setDate(cur.getDate() + 1); }
+      if (days.length > 14) days = days.slice(-14);   // long-running stories show their last two weeks
+      if (days.length >= 2) {
+        var dots = el("div", { class: "strip", "aria-hidden": "true" });
+        days.forEach(function (k, n) {
+          if (n) dots.appendChild(el("span", { class: "ln" }));
+          dots.appendChild(el("span", { class: "d" + (marked[k] ? " on " + i.assoc : "") }));
+        });
+        var sp = days[0].split("-");
+        strip = el("div", { class: "strip-wrap" }, [dots, el("div", { class: "strip-l", "aria-hidden": "true" }, [
+          el("span", { text: new Date(+sp[0], +sp[1] - 1, +sp[2]).toLocaleDateString("en-CA", { month: "short", day: "numeric" }).toUpperCase() }),
+          el("span", { text: "TODAY" })])]);
+      }
       var head = el("header", { class: "story-head", role: "button", tabindex: "0", "aria-expanded": String(!folded),
         onclick: function () { setFold(t, !folded); },
         onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFold(t, !folded); } } }, [
+        el("span", { class: "ongoing", text: "ONGOING STORY" }),
         el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
-          el("span", { class: "row1-r" }, [lvlPill(i.level), chevron(!folded)])]),
+          el("span", { class: "row1-r" }, [lvlPill(t.level), chevron(!folded)])]),
         el("h3", { text: (st && st.name) || t.story || i.title }),
         el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
-          t.items.length + " articles this week · updated " + ago(latest) })
+          t.items.length + " articles this week · updated " + ago(latest) }),
+        strip
       ]);
       var foldBar = function (text) {
         return el("button", { type: "button", class: "more-bar fold-bar", "aria-expanded": String(!folded),
@@ -649,7 +682,7 @@ article.unseen { border-color: var(--new-line); }
             el("span", { class: "m", text: outletName(x) + " · " + ago(x.published) + " · " + nicelvl(x.level) })])]));
         });
         if (newArts.length > 3) na.appendChild(el("li", { class: "seen" }, [el("span", { class: "m", text: "and " + (newArts.length - 3) + " more in the full story" })]));
-        card = el("article", { class: "card folded a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, [
+        card = el("article", { class: "card folded a-" + i.assoc + " lv" + levelOf(t.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, [
           head,
           el("div", { class: "fold-body" }, [
             st && st.stands ? el("p", { class: "fold-stands", text: st.stands })
@@ -660,7 +693,7 @@ article.unseen { border-color: var(--new-line); }
               text: newArts.length === 1 ? "NEW ARTICLE" : newArts.length + " NEW ARTICLES" })]), newPill(unseen)]) : null,
             newArts.length ? na : null
           ]),
-          foldBar("Show full story")
+          foldBar("Show full story · " + t.items.length + " articles")
         ]);
         // New key developments shown here count as read once the card has been on screen.
         card._keys = freshKeys.map(function (k) { return keyId(t.tid, k); });
@@ -717,7 +750,7 @@ article.unseen { border-color: var(--new-line); }
         bar, rows
       ];
     }
-    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, kids);
+    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(typeof folded !== "undefined" ? t.level : i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, kids);
     if (typeof keyIds !== "undefined" && keyIds.length) {
       card._keys = keyIds;
       if (!inNew || !unseen || !watcher) markKeys(keyIds);   // opened by hand: reading it counts
@@ -951,12 +984,11 @@ article.unseen { border-color: var(--new-line); }
     var all = threads(shown);
     // ---- NEW: stories with something unseen when this data loaded, most important first
     var fresh = all.filter(function (t) { return t.isNew; }).sort(byLead);
-    var freshMain = fresh.filter(function (t) { return t.lead.level >= 3; });
-    var freshFyi = fresh.filter(function (t) { return t.lead.level < 3; });
-    if (fresh.length) {
+    var freshMain = fresh.filter(function (t) { return t.level >= 3; });
+    if (freshMain.length) {
       var g = el("section", { class: "group-new", "aria-label": "New since you last looked" }, [
         el("div", { class: "group-head" }, [
-          el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + fresh.length })]),
+          el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + freshMain.length })]),
           el("button", { type: "button", class: "link-btn", text: "Mark all seen", onclick: function () {
             fresh.forEach(function (t) { t.items.forEach(function (i) { state.seenIds[i.id] = 1; delete state.newIds[i.id]; }); });
             saveSeen(); render(); window.scrollTo(0, 0);
@@ -965,44 +997,42 @@ article.unseen { border-color: var(--new-line); }
       ]);
       var cards = el("div", { class: "cards" });
       freshMain.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
-      if (freshFyi.length && state.showNewFyi) freshFyi.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
       g.appendChild(cards);
-      if (freshFyi.length) g.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
-        text: state.showNewFyi ? "Hide quieter new stories" : "Show " + freshFyi.length + " quieter new stories",
-        onclick: function () { state.showNewFyi = !state.showNewFyi; render(); } }));
       list.appendChild(g);
     } else if (!searching) {
       list.appendChild(el("p", { class: "all-seen", text: "You're all caught up. Nothing new since you last looked." }));
     }
 
     // ---- EARLIER: stories already seen, grouped by importance
-    var earlier = all.filter(function (t) { return !t.isNew; });
-    if (!earlier.length) return;
-    var wrap = el("div", { class: "group-earlier" }, [el("div", { class: "group-head" }, [
-      el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])])]);
-    LEVELS.forEach(function (L) {
-      var items = earlier.filter(function (t) { return levelOf(t.lead.level).n === L.n; }).sort(byLead);
-      if (!items.length) return;
+    var earlier = all.filter(function (t) { return !t.isNew && t.level >= 3; });
+    var wrap = el("div", { class: "group-earlier" });
+    if (earlier.length) wrap.appendChild(el("div", { class: "group-head" }, [
+      el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])]));
+    var section = function (L, items, note) {
       var sec = el("section", { class: "level", "aria-label": L.label }, [
         el("div", { class: "lvl-head" }, [
           el("span", { class: "dot", style: "background:" + L.color, "aria-hidden": "true" }),
           el("h2", { text: L.label, style: "color:" + L.color }),
-          el("span", { class: "count", text: String(items.length) })
+          el("span", { class: "count", text: String(items.length) + (note || "") })
         ])
       ]);
-      if (L.n === 2 && !state.showFyi && !searching) {
-        sec.appendChild(el("button", { type: "button", class: "more", text: "Show " + items.length + " quieter stories",
-          onclick: function () { state.showFyi = true; render(); } }));
-        wrap.appendChild(sec);
-        return;
-      }
       var cards = el("div", { class: "cards" });
-      items.forEach(function (t) { cards.appendChild(makeCard(t, false)); });
+      items.forEach(function (t) { cards.appendChild(makeCard(t, t.isNew)); });
       sec.appendChild(cards);
-      if (L.n === 2 && !searching) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
-        onclick: function () { state.showFyi = false; render(); } }));
       wrap.appendChild(sec);
+    };
+    LEVELS.forEach(function (L) {
+      if (L.n === 2) return;
+      var items = earlier.filter(function (t) { return levelOf(t.level).n === L.n; }).sort(byLead);
+      if (items.length) section(L, items);
     });
+    // ---- FYI: quieter stories get their own space at the bottom, new ones first
+    var fyi = all.filter(function (t) { return t.level < 3; })
+      .sort(function (a, b) { return (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0) || byLead(a, b); });
+    if (fyi.length) {
+      var newFyi = fyi.filter(function (t) { return t.isNew; }).length;
+      section(LEVELS[LEVELS.length - 1], fyi, newFyi ? " · " + newFyi + " new" : "");
+    }
     list.appendChild(wrap);
   }
 
