@@ -194,6 +194,16 @@ ol.keys .t { font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--
 ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(--muted); }
 ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
 .keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
+.story-head { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.story-head .row1-r { display: flex; align-items: center; gap: 8px; flex: none; }
+.story-head .row1-r svg { width: 18px; height: 18px; color: var(--muted); }
+article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
+.fold-body { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fold-stands { margin: 0; font-size: 14px; line-height: 1.42; color: var(--body);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.fold-body ol.keys li { padding: 4px 0; }
+.fold-bar { min-height: 44px; }
+ul.rows.fold-rows { padding: 0; background: transparent; } ul.rows.fold-rows li:first-child { border-top: none; padding-top: 2px; }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -321,6 +331,8 @@ article.unseen { border-color: var(--new-line); }
     open: {},                              // threads whose other articles are expanded
     fetchedAt: 0,                          // when this device last got fresh data
     filtersOpen: load("news.filtersOpen", false),
+    fold: load("news.fold", {}),           // stories opened or collapsed by hand: thread -> { v, at }
+    keySeen: load("news.keySeen", null),   // key developments already read on this device
     view: load("news.view", "news"),       // "news" or "parl"
     parl: null, parlSeen: load("parl.seen", null), parlNew: {}, parlOpen: {}, parlMore: {}
   };
@@ -348,11 +360,39 @@ article.unseen { border-color: var(--new-line); }
   var watcher = ("IntersectionObserver" in window) ? new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       var card = e.target;
-      if (e.isIntersecting && e.intersectionRatio >= 0.6) {
-        if (!card._seenTimer) card._seenTimer = setTimeout(function () { markSeen(card.dataset.ids, card); watcher.unobserve(card); }, 1000);
+      var fills = e.intersectionRect.height >= 0.55 * window.innerHeight;   // a card taller than the screen
+      if (e.isIntersecting && (e.intersectionRatio >= 0.6 || fills)) {
+        if (!card._seenTimer) card._seenTimer = setTimeout(function () {
+          markSeen(card.dataset.ids, card); markKeys(card._keys); watcher.unobserve(card); }, 1000);
       } else if (card._seenTimer) { clearTimeout(card._seenTimer); card._seenTimer = null; }
     });
-  }, { threshold: [0, 0.6, 1] }) : null;
+  }, { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1] }) : null;
+
+  // ---- Folding long stories. A story shows in full while it has something new, and folds down to its
+  // headline facts once everything in it has been seen. Opening or collapsing one by hand sticks until
+  // a newer article arrives.
+  function keyId(tid, k) { return tid + "|" + k.date + "|" + k.text.slice(0, 48); }
+  function markKeys(ids) {
+    if (!ids || !ids.length) return;
+    ids.forEach(function (id) { state.keySeen[id] = 1; });
+    save("news.keySeen", state.keySeen);
+  }
+  function newestOf(t) { return String(Math.max.apply(null, t.items.map(function (x) { return x.seen; }))); }
+  function isFolded(t, inNew) {
+    var f = state.fold[t.tid];
+    if (f && f.at === newestOf(t)) return f.v === "closed";
+    // A story you already know stays folded and just lists what is new; a brand-new story opens in full.
+    return !inNew || t.items.some(function (x) { return state.seenIds[x.id] && !state.newIds[x.id]; });
+  }
+  function setFold(t, closed) {
+    state.fold[t.tid] = { v: closed ? "closed" : "open", at: newestOf(t) };
+    save("news.fold", state.fold);
+    render();
+    if (closed) {   // the card just got much shorter: keep it on screen
+      var card = document.querySelector('article.card[data-tid="' + t.tid + '"]');
+      if (card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block: "start" });
+    }
+  }
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -579,13 +619,56 @@ article.unseen { border-color: var(--new-line); }
           ])
         ]));
       });
+      var folded = isFolded(t, inNew);
+      var keyIds = st ? st.keys.map(function (k) { return keyId(t.tid, k); }) : [];
+      var freshKeys = st ? st.keys.filter(function (k) { return !state.keySeen[keyId(t.tid, k)]; }) : [];
+      var head = el("header", { class: "story-head", role: "button", tabindex: "0", "aria-expanded": String(!folded),
+        onclick: function () { setFold(t, !folded); },
+        onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFold(t, !folded); } } }, [
+        el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
+          el("span", { class: "row1-r" }, [lvlPill(i.level), chevron(!folded)])]),
+        el("h3", { text: (st && st.name) || t.story || i.title }),
+        el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
+          t.items.length + " articles this week · updated " + ago(latest) })
+      ]);
+      var foldBar = function (text) {
+        return el("button", { type: "button", class: "more-bar fold-bar", "aria-expanded": String(!folded),
+          onclick: function () { setFold(t, !folded); } }, [document.createTextNode(text), chevron(!folded)]);
+      };
+      if (folded) {
+        // Folded: where it stands, plus anything added to the record since you last had it open.
+        var fk = el("ol", { class: "keys" });
+        freshKeys.slice(0, 3).forEach(function (k) {
+          var d = k.date.split("-"), when = new Date(+d[0], +d[1] - 1, +d[2]).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+          fk.appendChild(el("li", null, [el("span", { class: "when", text: when }), el("div", { class: "txt" }, [el("span", { class: "t", text: k.text })])]));
+        });
+        var newArts = inNew ? t.items.filter(function (x) { return state.newIds[x.id]; }).sort(byImportance) : [];
+        var na = el("ul", { class: "rows fold-rows" });
+        newArts.slice(0, 3).forEach(function (x) {
+          na.appendChild(el("li", null, [outletIcon(x, 24), el("div", { class: "txt" }, [titleNode(x, getCard, x.id),
+            el("span", { class: "m", text: outletName(x) + " · " + ago(x.published) + " · " + nicelvl(x.level) })])]));
+        });
+        if (newArts.length > 3) na.appendChild(el("li", { class: "seen" }, [el("span", { class: "m", text: "and " + (newArts.length - 3) + " more in the full story" })]));
+        card = el("article", { class: "card folded a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, [
+          head,
+          el("div", { class: "fold-body" }, [
+            st && st.stands ? el("p", { class: "fold-stands", text: st.stands })
+              : el("p", { class: "fold-stands" }, [el("b", { text: "Latest: " }), document.createTextNode(i.title)]),
+            freshKeys.length ? el("span", { class: "kicker" }, [el("span", { class: "n", text: freshKeys.length === 1 ? "NEW KEY DEVELOPMENT" : freshKeys.length + " NEW KEY DEVELOPMENTS" })]) : null,
+            freshKeys.length ? fk : null,
+            newArts.length ? el("div", { class: "kicker-row" }, [el("span", { class: "kicker" }, [el("span", { class: "n",
+              text: newArts.length === 1 ? "NEW ARTICLE" : newArts.length + " NEW ARTICLES" })]), newPill(unseen)]) : null,
+            newArts.length ? na : null
+          ]),
+          foldBar("Show full story")
+        ]);
+        // New key developments shown here count as read once the card has been on screen.
+        card._keys = freshKeys.map(function (k) { return keyId(t.tid, k); });
+        if (watcher && ((inNew && unseen) || freshKeys.length)) watcher.observe(card);
+        return card;
+      }
       kids = [
-        el("header", { class: "story-head" }, [
-          el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]), lvlPill(i.level)]),
-          el("h3", { text: (st && st.name) || t.story || i.title }),
-          el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
-            t.items.length + " articles this week · updated " + ago(latest) })
-        ]),
+        head,
         keyBox,
         el("div", { class: "card-body" }, [
           el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
@@ -594,7 +677,8 @@ article.unseen { border-color: var(--new-line); }
         ].concat(bodyParts(i))),
         shown.length ? el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: st ? "RECENT COVERAGE" : "MORE ON THIS STORY" }), tl]) : null,
         t.rest.length > firstFew.length ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
-          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - firstFew.length) + (st ? " earlier articles" : " more articles")), chevron(isOpen)]) : null
+          [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - firstFew.length) + (st ? " earlier articles" : " more articles")), chevron(isOpen)]) : null,
+        foldBar("Collapse story")
       ];
     } else {
       var bar = null, rows = null;
@@ -633,7 +717,11 @@ article.unseen { border-color: var(--new-line); }
         bar, rows
       ];
     }
-    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids }, kids);
+    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, kids);
+    if (typeof keyIds !== "undefined" && keyIds.length) {
+      card._keys = keyIds;
+      if (!inNew || !unseen || !watcher) markKeys(keyIds);   // opened by hand: reading it counts
+    }
     if (inNew && unseen && watcher) watcher.observe(card);
     return card;
   }
@@ -978,6 +1066,16 @@ article.unseen { border-color: var(--new-line); }
           d.items.forEach(function (i) { if (i.seen < cutoff) state.seenIds[i.id] = 1; });
           saveSeen();
         }
+        var liveKeys = {}, firstKeys = state.keySeen === null;
+        Object.keys(d.stories || {}).forEach(function (tid) {
+          (d.stories[tid].keys || []).forEach(function (k) { liveKeys[keyId(tid, k)] = 1; });
+        });
+        if (firstKeys) state.keySeen = liveKeys;
+        else Object.keys(state.keySeen).forEach(function (id) { if (!liveKeys[id]) delete state.keySeen[id]; });
+        save("news.keySeen", state.keySeen);
+        var liveThreads = {};
+        d.items.forEach(function (i) { liveThreads[i.thread || i.id] = 1; });
+        Object.keys(state.fold).forEach(function (tid) { if (!liveThreads[tid]) delete state.fold[tid]; });
         var changed = false;
         d.items.forEach(function (i) { if (taps[i.id] && !state.seenIds[i.id]) { state.seenIds[i.id] = 1; changed = true; } });
         if (changed) saveSeen();
