@@ -195,6 +195,14 @@ ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(-
 ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
 .keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .story-head { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ongoing { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--unread); margin-bottom: -2px; }
+.strip-wrap { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.strip { display: flex; align-items: center; }
+.strip .d { flex: none; width: 9px; height: 9px; border-radius: 999px; background: var(--chip-line); }
+.strip .d.on { background: var(--note); } .strip .d.on.CADA { background: var(--cada); } .strip .d.on.HEAL { background: var(--heal); }
+.strip .ln { flex: 1; height: 2px; background: var(--line); }
+.strip-l { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+article.card.folded .story-head { padding-bottom: 10px; }
 .story-head .row1-r { display: flex; align-items: center; gap: 8px; flex: none; }
 .story-head .row1-r svg { width: 18px; height: 18px; color: var(--muted); }
 article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
@@ -622,14 +630,39 @@ article.unseen { border-color: var(--new-line); }
       var folded = isFolded(t, inNew);
       var keyIds = st ? st.keys.map(function (k) { return keyId(t.tid, k); }) : [];
       var freshKeys = st ? st.keys.filter(function (k) { return !state.keySeen[keyId(t.tid, k)]; }) : [];
+      // Timeline strip: one dot per day from the story's first day to today, filled on days with a development.
+      var dayKey = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
+      var marked = {}, firstDay = dayKey(new Date());
+      t.items.forEach(function (x) {
+        var k = dayKey(new Date(x.published * 1000));
+        if (k < firstDay) firstDay = k;
+        if (!st && x.dev !== false && x.level >= 3) marked[k] = 1;
+      });
+      (st ? st.keys : []).forEach(function (k) { marked[k.date] = 1; if (k.date < firstDay) firstDay = k.date; });
+      var strip = null, days = [], fp = firstDay.split("-"), cur = new Date(+fp[0], +fp[1] - 1, +fp[2]), endDay = dayKey(new Date());
+      while (dayKey(cur) <= endDay && days.length < 400) { days.push(dayKey(cur)); cur.setDate(cur.getDate() + 1); }
+      if (days.length > 14) days = days.slice(-14);   // long-running stories show their last two weeks
+      if (days.length >= 2) {
+        var dots = el("div", { class: "strip", "aria-hidden": "true" });
+        days.forEach(function (k, n) {
+          if (n) dots.appendChild(el("span", { class: "ln" }));
+          dots.appendChild(el("span", { class: "d" + (marked[k] ? " on " + i.assoc : "") }));
+        });
+        var sp = days[0].split("-");
+        strip = el("div", { class: "strip-wrap" }, [dots, el("div", { class: "strip-l", "aria-hidden": "true" }, [
+          el("span", { text: new Date(+sp[0], +sp[1] - 1, +sp[2]).toLocaleDateString("en-CA", { month: "short", day: "numeric" }).toUpperCase() }),
+          el("span", { text: "TODAY" })])]);
+      }
       var head = el("header", { class: "story-head", role: "button", tabindex: "0", "aria-expanded": String(!folded),
         onclick: function () { setFold(t, !folded); },
         onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFold(t, !folded); } } }, [
+        el("span", { class: "ongoing", text: "ONGOING STORY" }),
         el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
           el("span", { class: "row1-r" }, [lvlPill(t.level), chevron(!folded)])]),
         el("h3", { text: (st && st.name) || t.story || i.title }),
         el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
-          t.items.length + " articles this week · updated " + ago(latest) })
+          t.items.length + " articles this week · updated " + ago(latest) }),
+        strip
       ]);
       var foldBar = function (text) {
         return el("button", { type: "button", class: "more-bar fold-bar", "aria-expanded": String(!folded),
