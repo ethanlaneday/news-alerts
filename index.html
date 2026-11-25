@@ -195,9 +195,6 @@ ol.keys .m { font-size: 12px; color: var(--muted); } ol.keys .m a { color: var(-
 ol.keys .prov { font-size: 11px; letter-spacing: 0.04em; color: var(--high); }
 .keys-wrap .link-btn { align-self: flex-start; min-height: 36px; }
 .story-head { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.ongoing { align-self: center; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--muted); box-shadow: inset 0 0 0 1px var(--chip-line); white-space: nowrap; }
-.ongoing::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 999px; background: var(--unread); vertical-align: 1px; }
 .story-head .row1-r { display: flex; align-items: center; gap: 8px; flex: none; }
 .story-head .row1-r svg { width: 18px; height: 18px; color: var(--muted); }
 article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
@@ -325,11 +322,9 @@ article.unseen { border-color: var(--new-line); }
     data: null,
     assoc: load("news.assoc", "all"),
     range: load("news.range", "day"),
-    showFyi: false,
     seenIds: load("news.seenIds", null),  // stories this device has shown on screen (id -> 1)
     newIds: {},
     briefOpen: load("news.briefOpen", false),                            // unseen when the data was loaded; stay in "New" until the next refresh
-    showNewFyi: false,
     query: "", topic: "all",
     open: {},                              // threads whose other articles are expanded
     fetchedAt: 0,                          // when this device last got fresh data
@@ -464,10 +459,12 @@ article.unseen { border-color: var(--new-line); }
       // Lead with the most important new article; otherwise the most important one overall.
       t.lead = (t.isNew ? t.fresh : t.items.slice().sort(byImportance))[0];
       t.rest = t.items.filter(function (i) { return i !== t.lead; }).sort(function (a, b) { return b.seen - a.seen; });
+      // Where the story is filed: by its most important article, so a big story with a minor update stays up top.
+      t.level = Math.max.apply(null, t.items.map(function (i) { return i.level; }));
     });
     return out;
   }
-  function byLead(a, b) { return byImportance(a.lead, b.lead); }
+  function byLead(a, b) { return b.level - a.level || byImportance(a.lead, b.lead); }
 
   function updateMeta() {
     var d = state.data, meta = document.getElementById("meta");
@@ -628,9 +625,8 @@ article.unseen { border-color: var(--new-line); }
       var head = el("header", { class: "story-head", role: "button", tabindex: "0", "aria-expanded": String(!folded),
         onclick: function () { setFold(t, !folded); },
         onkeydown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFold(t, !folded); } } }, [
-        el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null,
-            el("span", { class: "ongoing", text: "ONGOING" })]),
-          el("span", { class: "row1-r" }, [lvlPill(i.level), chevron(!folded)])]),
+        el("div", { class: "row1" }, [el("span", { class: "who" }, [el("b", { class: i.assoc, text: i.assoc }), topic ? el("span", { text: topic }) : null]),
+          el("span", { class: "row1-r" }, [lvlPill(t.level), chevron(!folded)])]),
         el("h3", { text: (st && st.name) || t.story || i.title }),
         el("p", { text: (st ? st.keys.length + " key development" + (st.keys.length === 1 ? "" : "s") + " · " : "") +
           t.items.length + " articles this week · updated " + ago(latest) })
@@ -653,7 +649,7 @@ article.unseen { border-color: var(--new-line); }
             el("span", { class: "m", text: outletName(x) + " · " + ago(x.published) + " · " + nicelvl(x.level) })])]));
         });
         if (newArts.length > 3) na.appendChild(el("li", { class: "seen" }, [el("span", { class: "m", text: "and " + (newArts.length - 3) + " more in the full story" })]));
-        card = el("article", { class: "card folded a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, [
+        card = el("article", { class: "card folded a-" + i.assoc + " lv" + levelOf(t.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, [
           head,
           el("div", { class: "fold-body" }, [
             st && st.stands ? el("p", { class: "fold-stands", text: st.stands })
@@ -721,7 +717,7 @@ article.unseen { border-color: var(--new-line); }
         bar, rows
       ];
     }
-    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, kids);
+    card = el("article", { class: "card a-" + i.assoc + " lv" + levelOf(typeof folded !== "undefined" ? t.level : i.level).n + (inNew ? " unseen" : ""), "data-ids": ids, "data-tid": t.tid }, kids);
     if (typeof keyIds !== "undefined" && keyIds.length) {
       card._keys = keyIds;
       if (!inNew || !unseen || !watcher) markKeys(keyIds);   // opened by hand: reading it counts
@@ -955,12 +951,11 @@ article.unseen { border-color: var(--new-line); }
     var all = threads(shown);
     // ---- NEW: stories with something unseen when this data loaded, most important first
     var fresh = all.filter(function (t) { return t.isNew; }).sort(byLead);
-    var freshMain = fresh.filter(function (t) { return t.lead.level >= 3; });
-    var freshFyi = fresh.filter(function (t) { return t.lead.level < 3; });
-    if (fresh.length) {
+    var freshMain = fresh.filter(function (t) { return t.level >= 3; });
+    if (freshMain.length) {
       var g = el("section", { class: "group-new", "aria-label": "New since you last looked" }, [
         el("div", { class: "group-head" }, [
-          el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + fresh.length })]),
+          el("h2", null, [document.createTextNode("New "), el("span", { class: "sub", text: "· " + freshMain.length })]),
           el("button", { type: "button", class: "link-btn", text: "Mark all seen", onclick: function () {
             fresh.forEach(function (t) { t.items.forEach(function (i) { state.seenIds[i.id] = 1; delete state.newIds[i.id]; }); });
             saveSeen(); render(); window.scrollTo(0, 0);
@@ -969,44 +964,42 @@ article.unseen { border-color: var(--new-line); }
       ]);
       var cards = el("div", { class: "cards" });
       freshMain.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
-      if (freshFyi.length && state.showNewFyi) freshFyi.forEach(function (t) { cards.appendChild(makeCard(t, true)); });
       g.appendChild(cards);
-      if (freshFyi.length) g.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
-        text: state.showNewFyi ? "Hide quieter new stories" : "Show " + freshFyi.length + " quieter new stories",
-        onclick: function () { state.showNewFyi = !state.showNewFyi; render(); } }));
       list.appendChild(g);
     } else if (!searching) {
       list.appendChild(el("p", { class: "all-seen", text: "You're all caught up. Nothing new since you last looked." }));
     }
 
     // ---- EARLIER: stories already seen, grouped by importance
-    var earlier = all.filter(function (t) { return !t.isNew; });
-    if (!earlier.length) return;
-    var wrap = el("div", { class: "group-earlier" }, [el("div", { class: "group-head" }, [
-      el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])])]);
-    LEVELS.forEach(function (L) {
-      var items = earlier.filter(function (t) { return levelOf(t.lead.level).n === L.n; }).sort(byLead);
-      if (!items.length) return;
+    var earlier = all.filter(function (t) { return !t.isNew && t.level >= 3; });
+    var wrap = el("div", { class: "group-earlier" });
+    if (earlier.length) wrap.appendChild(el("div", { class: "group-head" }, [
+      el("h2", null, [document.createTextNode("Earlier "), el("span", { class: "sub", text: "· already seen" })])]));
+    var section = function (L, items, note) {
       var sec = el("section", { class: "level", "aria-label": L.label }, [
         el("div", { class: "lvl-head" }, [
           el("span", { class: "dot", style: "background:" + L.color, "aria-hidden": "true" }),
           el("h2", { text: L.label, style: "color:" + L.color }),
-          el("span", { class: "count", text: String(items.length) })
+          el("span", { class: "count", text: String(items.length) + (note || "") })
         ])
       ]);
-      if (L.n === 2 && !state.showFyi && !searching) {
-        sec.appendChild(el("button", { type: "button", class: "more", text: "Show " + items.length + " quieter stories",
-          onclick: function () { state.showFyi = true; render(); } }));
-        wrap.appendChild(sec);
-        return;
-      }
       var cards = el("div", { class: "cards" });
-      items.forEach(function (t) { cards.appendChild(makeCard(t, false)); });
+      items.forEach(function (t) { cards.appendChild(makeCard(t, t.isNew)); });
       sec.appendChild(cards);
-      if (L.n === 2 && !searching) sec.appendChild(el("button", { type: "button", class: "more", text: "Hide quieter stories",
-        onclick: function () { state.showFyi = false; render(); } }));
       wrap.appendChild(sec);
+    };
+    LEVELS.forEach(function (L) {
+      if (L.n === 2) return;
+      var items = earlier.filter(function (t) { return levelOf(t.level).n === L.n; }).sort(byLead);
+      if (items.length) section(L, items);
     });
+    // ---- FYI: quieter stories get their own space at the bottom, new ones first
+    var fyi = all.filter(function (t) { return t.level < 3; })
+      .sort(function (a, b) { return (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0) || byLead(a, b); });
+    if (fyi.length) {
+      var newFyi = fyi.filter(function (t) { return t.isNew; }).length;
+      section(LEVELS[LEVELS.length - 1], fyi, newFyi ? " · " + newFyi + " new" : "");
+    }
     list.appendChild(wrap);
   }
 
