@@ -1365,6 +1365,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "committee-inbox":
+        import committee_mail
+        return committee_mail.debug_inbox()
     if urls.strip().startswith("committee-doc "):
         import committee_mail
         return committee_mail.debug(sys.modules[__name__], urls.split()[1])

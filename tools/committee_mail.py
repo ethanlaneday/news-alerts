@@ -189,3 +189,18 @@ def debug(na, url):
     doc = parse_doc(get_page(url, na.BROWSER_UA), url)
     print("DOC", {k: (v if k != "text" else v[:500]) for k, v in doc.items()})
     return 0
+
+
+def debug_inbox():
+    """Say what is in the pipeline's inbox right now, without printing its name or any codes."""
+    topic = os.environ.get("COMMITTEE_INBOX", "").strip()
+    if not topic:
+        print("INBOX secret COMMITTEE_INBOX is not set")
+        return 0
+    msgs = read_inbox(topic)
+    print(f"INBOX secret is set ({len(topic)} characters); {len(msgs)} message(s) in the last 12 hours")
+    for m in msgs:
+        when = datetime.fromtimestamp(m["time"], OTTAWA).strftime("%b %d %H:%M")
+        text = re.sub(r"(?i)(code|token|key)=[\w\-]+", r"\1=...", re.sub(r"\s+", " ", m["text"]))
+        print(f"   {when} | {m['title'][:70]!r} | {len(parse_mail(m['text']))} document link(s) | {text[:260]}")
+    return 0
