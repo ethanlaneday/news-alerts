@@ -303,6 +303,60 @@ FEEDS = [
      "context": "Canada federal Parliament bill", "url": "https://www.parl.ca/legisinfo/en/bills/rss"},
     {"id": "bank-of-canada", "name": "Bank of Canada", "official": True, "title_only": True,
      "context": "Canada", "url": "https://www.bankofcanada.ca/content_type/press-releases/feed/"},
+    # --- Added after a sweep for blind spots (each address was checked from the runner first) ---
+    # French-language press. "lang" sends these through the French word lists in FR_TOPICS.
+    {"id": "lapresse-sante", "name": "La Presse", "lang": "fr", "url": "https://www.lapresse.ca/actualites/sante/rss"},
+    {"id": "lapresse-politique", "name": "La Presse", "lang": "fr", "url": "https://www.lapresse.ca/actualites/politique/rss"},
+    {"id": "ledevoir-politique", "name": "Le Devoir", "lang": "fr", "url": "https://www.ledevoir.com/rss/section/politique.xml"},
+    {"id": "radio-canada", "name": "Radio-Canada", "lang": "fr", "url": "https://ici.radio-canada.ca/rss/4159"},
+    # United States, at the source: proclamations and notices appear here before Canadian coverage.
+    {"id": "white-house", "name": "The White House", "official": True, "title_only": True,
+     "keep": r"(?i)tariff|import|trade|automobile|vehicle|steel|alumin|canada|usmca|section 232|duties",
+     "context": "Canada U.S. trade", "url": "https://www.whitehouse.gov/presidential-actions/feed/"},
+    {"id": "fedreg-autos", "name": "U.S. Federal Register", "official": True, "kind": "fedreg", "context": "Canada U.S. trade tariff",
+     "keep": r"(?i)automobile|auto parts|motor vehicle|light truck|usmca|canada|section 232|steel|alumin",
+     "url": "https://www.federalregister.gov/api/v1/documents.json?conditions[term]=automobile+tariff&order=newest&per_page=20"},
+    {"id": "fedreg-usmca", "name": "U.S. Federal Register", "official": True, "kind": "fedreg", "context": "Canada U.S. trade tariff",
+     "keep": r"(?i)usmca|canada|automobile|motor vehicle|section 232",
+     "url": "https://www.federalregister.gov/api/v1/documents.json?conditions[term]=USMCA&order=newest&per_page=20"},
+    {"id": "fedreg-filed", "name": "U.S. Federal Register (filed, not yet published)", "official": True, "kind": "fedreg",
+     "context": "Canada U.S. trade tariff",
+     "keep": r"(?i)automobile|auto parts|motor vehicle|usmca|\bcanad|section 232|steel and alumin",
+     "url": "https://www.federalregister.gov/api/v1/public-inspection-documents/current.json"},
+    # Regulations: each issue's table of contents is read for individual orders and regulations (hourly).
+    {"id": "gazette-1", "name": "Canada Gazette, Part I", "official": True, "title_only": True, "kind": "gazette",
+     "context": "Canada federal regulation", "max_age_hours": 24 * 9, "url": "https://www.gazette.gc.ca/rss/p1-eng.xml"},
+    {"id": "gazette-2", "name": "Canada Gazette, Part II", "official": True, "title_only": True, "kind": "gazette",
+     "context": "Canada federal regulation", "max_age_hours": 24 * 16, "url": "https://www.gazette.gc.ca/rss/p2-eng.xml"},
+    # Provinces
+    {"id": "ontario-news", "name": "Government of Ontario", "official": True, "context": "Canada Ontario",
+     "url": "https://news.ontario.ca/newsroom/en/rss/allnews.rss"},
+    {"id": "bc-news", "name": "Government of British Columbia", "official": True, "context": "Canada British Columbia",
+     "url": "https://news.gov.bc.ca/feed"},
+    {"id": "bc-health", "name": "Government of British Columbia", "official": True, "context": "Canada British Columbia health",
+     "url": "https://news.gov.bc.ca/ministries/health/feed"},
+    {"id": "alberta-news", "name": "Government of Alberta", "official": True, "context": "Canada Alberta",
+     "url": "https://www.alberta.ca/NewsRoom/newsroom.cfm"},
+    # Stakeholders' own statements
+    {"id": "cvma", "name": "Canadian Vehicle Manufacturers' Association", "primary": True, "context": "Canada auto industry vehicle",
+     "url": "https://www.cvma.ca/feed/"},
+    {"id": "mvro", "name": "Motor Vehicle Retailers of Ontario", "primary": True, "context": "Canada Ontario auto dealers",
+     "url": "https://www.tada.ca/feed/"},
+    {"id": "healthcarecan", "name": "HealthCareCAN", "primary": True, "context": "Canada health", "skip": r"\(#\w+\)|#[A-Z]{2,}\d",
+     "url": "https://www.healthcarecan.ca/feed/"},
+    {"id": "cfnu", "name": "Canadian Federation of Nurses Unions", "primary": True, "context": "Canada health nurses",
+     "url": "https://nursesunions.ca/feed/"},
+    {"id": "mhcc", "name": "Mental Health Commission of Canada", "primary": True, "context": "Canada mental health",
+     "url": "https://mentalhealthcommission.ca/feed/"},
+    # Federal bodies that publish outside the main Government of Canada news feed
+    {"id": "pmo", "name": "Prime Minister of Canada", "official": True, "context": "Canada federal government",
+     "url": "https://www.pm.gc.ca/en/news.rss"},
+    {"id": "statcan-daily", "name": "Statistics Canada", "official": True, "title_only": True, "context": "Canada",
+     "url": "https://www150.statcan.gc.ca/n1/rss/dai-quo/0-eng.atom"},
+    {"id": "privacy-commissioner", "name": "Privacy Commissioner of Canada", "official": True, "title_only": True,
+     "context": "Canada federal", "url": "https://www.priv.gc.ca/en/rss/news/"},
+    {"id": "health-recalls", "name": "Health Canada recalls and advisories", "official": True, "title_only": True,
+     "context": "Canada Health Canada drug health product", "url": "https://recalls-rappels.canada.ca/en/feed/health-products-alerts-recalls"},
     # (CADA and HEAL have no working news feeds; their sites are searched via Google instead.)
     {"id": "gc-news", "title_only": True, "name": "Government of Canada", "official": True,
      "context": "Canada federal",
@@ -371,7 +425,8 @@ TOP_SOURCES = re.compile(
     r"reuters|canadian press|associated press|^ap$|ap news|bloomberg|\bcbc\b|radio-canada|globe and mail|\bctv|"
     r"global news|toronto star|financial post|national post|automotive news|autonews|politico|hill times|"
     r"ipolitics|la presse|le devoir|wall street journal|new york times|financial times|government of canada|"
-    r"parliament|house of commons|senate of canada|bank of canada|health canada", re.I)
+    r"parliament|house of commons|senate of canada|bank of canada|health canada|canada gazette|federal register|"
+    r"white house|statistics canada|privacy commissioner|prime minister of canada|government of (ontario|alberta|british columbia)", re.I)
 LOW_SOURCES = re.compile(
     r"rebel news|true north|western standard|juno news|post millennial|epoch times|blacklock|"
     r"ford authority|gm authority|mopar insiders|carscoops|autoevolution|carbuzz|hotcars|motorbiscuit|"
@@ -509,10 +564,47 @@ def all_sources():
             yield {"id": f"google:{t['key']}:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d")}
             if i < BING_QUERIES_PER_TOPIC:
                 yield {"id": f"bing:{t['key']}:{i}", "name": "", "url": BING + urllib.parse.quote(q)}
+    for i, q in enumerate(FR_QUERIES):
+        yield {"id": f"google:fr:{i}", "name": "", "lang": "fr", "url": GN_FR + urllib.parse.quote(q + " when:1d")}
     for i, q in enumerate(OTTAWA_QUERIES):
         yield {"id": f"google:ottawa:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d")}
     for f in FEEDS:
         yield {**f, "id": "feed:" + f["id"]}
+
+
+# French-language items are matched with these word lists instead of the English topic filters.
+# First match wins; each entry is (topic key, pattern).
+FR_AUTO = r"automobile|\bautos?\b|véhicule|voiture|concessionnaire|camionnette"
+FR_PLACE = FR_AUTO + r"|acier|aluminium|canad|ottawa|washington|trump|états-unis"
+FR_MAKERS = FR_AUTO + r"|stellantis|\bGM\b|general motors|\bford\b|honda|toyota|batterie|northvolt"
+FR_CARE = r"santé|médecin|clinique|hôpital|patient|soins"
+# Each entry: (topic key, patterns that must ALL appear, in any order).
+FR_TOPICS = [(k, [re.compile(p, re.I) for p in ps]) for k, ps in [
+    ("cada", [r"corporation des associations de détaillants d.automobiles|\bCADA\b"]),
+    ("trade", [r"tarif|droits de douane|surtaxe|ACEUM|libre-échange|guerre commerciale|négociations commerciales", FR_PLACE]),
+    ("plants", [r"usine|chaîne de montage|assemblage", FR_MAKERS]),
+    ("evpolicy", [r"véhicules? électriques?|\bVZE\b|voitures? électriques?|roulez vert|bornes? de recharge|norme sur la disponibilité"]),
+    ("market", [r"concessionnaires?|ventes? (de |d.)(véhicules|automobiles|voitures)|vols? (de |d.)(véhicules|voitures|autos)|rappels? (de |d.)véhicules"]),
+    ("aihealth", [r"intelligence artificielle|\bIA\b|scribe", FR_CARE]),
+    ("healthfunding", [r"transferts? (canadien )?en (matière de )?santé|financement (de la |des soins de |en )santé|budget (de la )?santé"]),
+    ("workforce", [r"pénurie (de |d.)(infirmi|médecin|personnel|main-d.œuvre|soignant)|main-d.œuvre (en|de la) santé|"
+                   r"infirmières? .*(grève|pénurie|négociation)|médecins? (formés à l.étranger|étrangers)"]),
+    ("pharmacare", [r"assurance.médicaments|pénurie de médicaments|prix des médicaments|soins dentaires|régime (canadien )?de soins dentaires"]),
+    ("mentalhealth", [r"santé mentale|dépendances?|opioïdes|surdoses"]),
+    ("aging", [r"\bCHSLD\b|soins de longue durée|soins à domicile|proches aidants|maisons des aînés"]),
+    ("access", [r"médecins? de famille|urgences|temps d.attente|première ligne|listes? d.attente"]),
+    ("publichealth", [r"santé publique|vaccin|éclosion|rougeole|grippe aviaire"]),
+    ("healthpolicy", [r"ministre (fédérale? )?de la santé|santé canada|loi canadienne sur la santé|aide médicale à mourir|"
+                      r"système de santé|réseau de la santé|santé québec"]),
+]]
+FR_QUERIES = [
+    "tarifs automobiles Canada États-Unis", "ACEUM révision", "usine automobile Canada (Stellantis OR GM OR Ford OR Honda OR Toyota)",
+    '"véhicules électriques" Canada (norme OR rabais OR tarifs)', "concessionnaires automobiles Canada",
+    '"transferts en santé" OR "Transfert canadien en matière de santé"', '"assurance médicaments" Canada',
+    'pénurie (infirmières OR médecins) Canada fédéral', '"intelligence artificielle" santé Canada',
+    '"ministre de la Santé" Canada fédéral', '"santé mentale" Ottawa financement',
+]
+GN_FR = "https://news.google.com/rss/search?hl=fr-CA&gl=CA&ceid=CA:fr&q="
 
 
 # ------------------------------- relevance ----------------------------------
@@ -572,6 +664,10 @@ def classify(item):
     # Headline + summary only: outlet names like "Automotive News Canada" would
     # otherwise make every story from that outlet look Canadian and auto-related.
     text = item["title"] if item.get("title_only") else f"{item['title']} {item['desc']}"
+    if item.get("lang") == "fr":
+        if not TOPIC_BY_KEY:
+            TOPIC_BY_KEY.update({t["key"]: t for t in TOPICS})
+        return next((TOPIC_BY_KEY[k] for k, pats in FR_TOPICS if all(rx.search(text) for rx in pats)), None)
     if item.get("context"):
         text += " " + item["context"]
     for t in TOPICS:
@@ -649,6 +745,11 @@ announcements, committee hearings or consultations, statements by the associatio
 3 = notable update worth knowing today.
 2 = routine or background: monthly data, minor company news, features.
 1 = not relevant to that association (wrong country or sector, consumer reviews, lifestyle, spam).
+Some headlines are in French: rate them the same way, and write "summary", "why" and "story" in English. \
+Quebec-only or other provincial health stories with no federal angle are usually 2. \
+Items from the U.S. Federal Register or the White House are official U.S. actions: rate by their effect on \
+Canadian autos and trade (a tariff proclamation touching vehicles, parts, steel or aluminum is 4-5; unrelated ones are 1). \
+Items from the Canada Gazette are regulations and orders: a final or proposed regulation on one of the association's files is 4. \
 Judge from the headline and snippet only; don't assume facts beyond them. Several items may cover the \
 same event: rate each on its own.
 Ongoing stories: you're told today's date, when each item was published, and the stories already on \
@@ -1321,10 +1422,70 @@ def save_state(path: str, state: dict):
         json.dump(state, f)
 
 
+def parse_fedreg(data: bytes, name: str):
+    """Items from the U.S. Federal Register's JSON (published documents, or those filed for publication)."""
+    for d in json.loads(data).get("results", []):
+        title, link = (d.get("title") or "").strip(), d.get("html_url") or ""
+        when = d.get("publication_date") or d.get("filed_at") or ""
+        if not title or not link:
+            continue
+        agencies = ", ".join(a.get("name") or a.get("raw_name") or "" for a in d.get("agencies") or [])[:120]
+        yield {"title": title, "link": link, "desc": re.sub(r"\s+", " ", (d.get("abstract") or agencies or ""))[:400],
+               "source": name, "source_url": "https://www.federalregister.gov", "ts": parse_time(when[:10]) if when else time.time(),
+               "guid": d.get("document_number") or link}
+
+
+GAZETTE_SKIP = re.compile(r"(?i)^(table of contents|html|pdf|previous|next|top of page|date modified|search|skip to|"
+                          r"canada gazette|government notices|parliament|commissions|miscellaneous notices|proposed regulations|"
+                          r"supplements?|index|.{0,11})$")
+
+
+def gazette_entries(page: str, base: str):
+    """(title, link) for each order, regulation or notice in one issue of the Canada Gazette."""
+    out, seen = [], set()
+    for href, text in re.findall(r'<a\b[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', page, re.S):
+        title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text))).strip()
+        link = urllib.parse.urljoin(base, href)
+        if "/rp-pr/" not in link or not link.endswith(".html") or link in seen or GAZETTE_SKIP.match(title) or len(title) < 12:
+            continue
+        seen.add(link)
+        out.append((title[:240], link))
+    return out
+
+
+def read_gazette(src, data):
+    """The two newest issues, opened up into their individual entries. Checked about once an hour."""
+    if int(time.time() // 300) % 12 and not os.environ.get("GAZETTE_NOW"):
+        return []
+    items = []
+    for issue in list(parse(data, src.get("name", "")))[:2]:
+        try:
+            page = fetch(issue["link"]).decode("utf-8", "replace")
+        except Exception:
+            continue
+        for title, link in gazette_entries(page, issue["link"]):
+            items.append({"title": title, "link": link, "desc": "", "source": src["name"], "source_url": "https://www.gazette.gc.ca",
+                          "ts": issue["ts"], "guid": link})
+    return items
+
+
 def read_source(src, feed_override):
     data = open(feed_override, "rb").read() if feed_override else fetch(src["url"])
-    items = list(parse(data, src.get("name", "")))
+    if src.get("kind") == "fedreg" and not feed_override:
+        items = list(parse_fedreg(data, src.get("name", "")))
+    elif src.get("kind") == "gazette" and not feed_override:
+        items = read_gazette(src, data)
+    else:
+        items = list(parse(data, src.get("name", "")))
+    if src.get("keep"):
+        items = [it for it in items if re.search(src["keep"], f"{it['title']} {it['desc']}")]
+    if src.get("skip"):
+        items = [it for it in items if not re.search(src["skip"], it["title"])]
     for it in items:
+        if src.get("lang"):
+            it["lang"] = src["lang"]
+        if src.get("primary"):   # an organisation's own statement: reliable for what that organisation says
+            it["official"] = True
         if src.get("official"):
             it["official"] = True
         if src.get("title_only"):
@@ -1388,6 +1549,21 @@ def check_urls(urls):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip().startswith("sources "):
+        # Read the named sources for real and say what each returned.
+        os.environ["GAZETTE_NOW"] = "1"
+        want = urls.split()[1:]
+        for src in all_sources():
+            if not any(w in src["id"] for w in want):
+                continue
+            try:
+                items = read_source(src, None)
+                rel = [it for it in items if classify(it)]
+                eg = (rel or items or [{"title": ""}])[0]["title"][:80]
+                print(f"SRC ok   {src['id']:<28} {len(items):>3} items, {len(rel):>2} relevant | {eg!r}")
+            except Exception as e:
+                print(f"SRC FAIL {src['id']:<28} {type(e).__name__}: {str(e)[:70]}")
+        return 0
     if urls.strip().startswith("check "):
         return check_urls(urls.split()[1:])
     if urls.strip() == "committee-inbox":
