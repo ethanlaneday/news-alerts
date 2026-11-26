@@ -315,6 +315,58 @@ class GoLinks(unittest.TestCase):
         self.assertEqual(links[N.item_id(b)][0], "https://example.com/new")
 
 
+class NewSources(unittest.TestCase):
+    def fr(self, title):
+        t = N.classify(dict(item(title), lang="fr"))
+        return t["key"] if t else None
+
+    def test_french_headlines_are_filed(self):
+        self.assertEqual(self.fr("Tarifs américains : Ottawa veut protéger le secteur automobile"), "trade")
+        self.assertEqual(self.fr("Stellantis : l'usine de Brampton pourrait être vendue"), "plants")
+        self.assertEqual(self.fr("Ottawa bonifie les transferts en santé aux provinces"), "healthfunding")
+        self.assertEqual(self.fr("L'intelligence artificielle pour aider les médecins de famille"), "aihealth")
+        self.assertIsNone(self.fr("Le Canadien l'emporte 3-2 en prolongation"))
+
+    def test_federal_register_json_is_read(self):
+        import json
+        data = json.dumps({"results": [
+            {"title": "Adjusting Imports of Automobiles and Automobile Parts Into the United States", "abstract": "Proclamation",
+             "html_url": "https://www.federalregister.gov/d/1", "publication_date": "2026-11-23", "document_number": "2026-1"},
+            {"title": "No link here"}]}).encode()
+        got = list(N.parse_fedreg(data, "U.S. Federal Register"))
+        self.assertEqual(len(got), 1)
+        self.assertEqual(N.classify(dict(got[0], context="Canada U.S. trade tariff"))["key"], "trade")
+        self.assertLess(abs(got[0]["ts"] - NOW), 3 * 86400)
+
+    def test_gazette_issue_is_opened_into_entries(self):
+        page = ('<a href="/rp-pr/p2/2026/2026-11-18/html/sor-dors250-eng.html">Regulations Amending the Electric Vehicle '
+                'Availability Standard</a><a href="index-eng.html">HTML</a><a href="/rp-pr/p2/2026/2026-11-18/pdf/g2.pdf">PDF</a>'
+                '<a href="/rp-pr/p2/2026/2026-11-18/html/si-tr90-eng.html">Certain Motor Vehicles Remission Order</a>')
+        got = N.gazette_entries(page, "https://www.gazette.gc.ca/rp-pr/p2/2026/2026-11-18/html/index-eng.html")
+        self.assertEqual([t for t, _ in got], ["Regulations Amending the Electric Vehicle Availability Standard",
+                                               "Certain Motor Vehicles Remission Order"])
+        self.assertTrue(all(link.startswith("https://www.gazette.gc.ca/rp-pr/") for _, link in got))
+
+    def test_gazette_part_one_notices_are_read(self):
+        page = ('<h2>Menu</h2><h2 id="ne1">DEPARTMENT OF FINANCE</h2><h3>CUSTOMS TARIFF</h3><h4>Motor Vehicles Remission Order</h4>'
+                '<h2 id="ne2">DEPARTMENT OF HEALTH</h2><h3>FOOD AND DRUGS ACT</h3><h4>Notice of fees</h4><h4>Part 2</h4>')
+        got = N.gazette_notices(page, "https://gazette.gc.ca/x/notice-avis-eng.html")
+        self.assertEqual(got, [("Motor Vehicles Remission Order (Department Of Finance)", "https://gazette.gc.ca/x/notice-avis-eng.html#ne1"),
+                               ("Notice of fees (Department Of Health)", "https://gazette.gc.ca/x/notice-avis-eng.html#ne2")])
+
+    def test_feed_titles_with_nested_markup_are_read(self):
+        atom = b"""<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">New motor
+        vehicle sales, <span>September 2026</span></div></title><link href="https://www.statcan.gc.ca/x"></link>
+        <updated>2026-11-24T08:30:00-05:00</updated></entry></feed>"""
+        got = list(N.parse(atom, "Statistics Canada"))
+        self.assertEqual(got[0]["title"], "New motor vehicle sales, September 2026")
+
+    def test_every_source_has_a_unique_name_and_a_secure_address(self):
+        srcs = list(N.all_sources())
+        self.assertEqual(len({s_["id"] for s_ in srcs}), len(srcs))
+        self.assertTrue(all(s_["url"].startswith("https://") for s_ in srcs))
+
+
 class Icons(unittest.TestCase):
     def test_image_checks(self):
         png = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack(">II", 180, 180) + b"x" * 200
