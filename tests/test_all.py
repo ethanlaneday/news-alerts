@@ -280,6 +280,18 @@ See also <https://evil.example/DocumentViewer/en/333>"""
         self.assertEqual(len(rel), 2)
         self.assertEqual(sent, [])
 
+    def test_long_mail_is_worked_through_over_several_runs_and_notices_skipped(self):
+        lines = ["Health (HESA)", "Notice of Meeting:", "Meeting 47<https://www.ourcommons.ca/DocumentViewer/en/900>", "News Release:"]
+        lines += [f"Release {n}<https://www.ourcommons.ca/DocumentViewer/en/{1000 + n}>" for n in range(30)]
+        inbox = [{"id": "big", "time": 0, "title": "Committee Subscription", "text": "\n".join(lines)}]
+        state, got = {}, []
+        for run in range(4):
+            got += C.collect(state, NOW + run * 300, N, lambda *a: None, inbox=inbox, fetch=lambda url: self.PAGE)
+        links = [i["link"] for i in got]
+        self.assertEqual(len(links), 30)                      # every release, none twice
+        self.assertEqual(len(set(links)), 30)
+        self.assertFalse(any(link.endswith("/900") for link in links))   # the meeting notice is left out
+
     def test_confirmation_request_is_passed_on_once(self):
         state, sent = {}, []
         inbox = [{"id": "c1", "time": 0, "title": "Please confirm your subscription",

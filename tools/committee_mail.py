@@ -26,6 +26,9 @@ DOC_LINK = re.compile(r"https://www\.ourcommons\.ca/DocumentViewer/en/[\w\-/]{3,
 HOUSE_LINK = re.compile(r"https://www\.ourcommons\.ca/[^\s<>\"')\]]{3,300}", re.I)
 KEEP_DAYS = 45
 MAX_DOCS_PER_RUN = 12
+# The subscription can send everything a committee posts. Meetings are already covered from the schedule,
+# and minutes and transcripts are not news, so those kinds are left out.
+SKIP_KINDS = re.compile(r"(?i)notice|minutes|evidence|transcript|meeting|webcast|agenda|proc[eè]s|t[eé]moignages")
 
 
 def parse_mail(text: str):
@@ -63,7 +66,16 @@ def read_inbox(topic, server="https://ntfy.sh"):
         except ValueError:
             continue
         if m.get("event") == "message":
-            out.append({"id": m.get("id", ""), "time": m.get("time", 0), "title": m.get("title", ""), "text": m.get("message", "")})
+            text = m.get("message", "")
+            att = (m.get("attachment") or {}).get("url", "")
+            if att.startswith(server.rstrip("/") + "/"):   # a long e-mail may arrive as an attached text file
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(att, headers={"User-Agent": "news-alerts"}), timeout=20) as r:
+                        text += "\n" + r.read(400_000).decode("utf-8", "replace")
+                except Exception:
+                    pass
+            out.append({"id": m.get("id", ""), "time": m.get("time", 0), "title": m.get("title", ""), "text": text,
+                        "size": len(m.get("message", "")), "attached": bool(att)})
     return out
 
 
@@ -125,20 +137,23 @@ def collect(state, now, na, notify, inbox=None, fetch=None):
         if not msg["id"] or msg["id"] in box["msgs"]:
             continue
         found = parse_mail(msg["text"])
-        todo = [f for f in found if f["url"].lower() not in box["docs"]]
-        if tried + len(todo) > MAX_DOCS_PER_RUN and tried:
-            continue   # leave this message for the next run
-        box["msgs"][msg["id"]] = int(now)
+        wanted = [f for f in found if not SKIP_KINDS.search(f["kind"])]
+        todo = [f for f in wanted if f["url"].lower() not in box["docs"]]
         if not found:
+            box["msgs"][msg["id"]] = int(now)
             # Not a list of items. If it carries a House link (a request to confirm the subscription,
             # say), pass it on once so it can be acted on; otherwise ignore it.
             link = HOUSE_LINK.search(msg["text"])
-            if link and re.search(r"(?i)confirm|verif|activate|subscri|abonn", msg["text"] + msg["title"]):
+            if link and re.search(r"(?i)confirm|verif|activat|subscri|abonn", msg["text"] + msg["title"]):
                 notify("Committee subscription: action needed",
                        (msg["title"] or "A message from the House of Commons subscription service") +
                        "\nTap to open the link it contains.", link.group(0).rstrip(".,"))
             continue
-        for f in todo[:MAX_DOCS_PER_RUN]:
+        room = MAX_DOCS_PER_RUN - tried
+        if len(todo) <= room:
+            box["msgs"][msg["id"]] = int(now)   # finished with this message; a longer one carries on next run
+        todo = todo[:max(room, 0)]
+        for f in todo:
             tried += 1
             box["docs"][f["url"].lower()] = int(now)
             try:
@@ -202,5 +217,10 @@ def debug_inbox():
     for m in msgs:
         when = datetime.fromtimestamp(m["time"], OTTAWA).strftime("%b %d %H:%M")
         text = re.sub(r"(?i)(code|token|key)=[\w\-]+", r"\1=...", re.sub(r"\s+", " ", m["text"]))
-        print(f"   {when} | {m['title'][:70]!r} | {len(parse_mail(m['text']))} document link(s) | {text[:260]}")
+        found = parse_mail(m["text"])
+        kinds = {}
+        for f in found:
+            kinds[f["kind"]] = kinds.get(f["kind"], 0) + 1
+        print(f"   {when} | {m['title'][:70]!r} | {m.get('size')} characters{' + attachment' if m.get('attached') else ''} | "
+              f"{len(found)} document link(s) {kinds} | {text[:200]}")
     return 0
