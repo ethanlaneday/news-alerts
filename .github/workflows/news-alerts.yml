@@ -65,6 +65,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          COMMITTEE_INBOX: ${{ secrets.COMMITTEE_INBOX }}
           MIN_LEVEL: ${{ vars.MIN_LEVEL }}
           CHECK_FEEDS: ${{ inputs.check_sources && '1' || '' }}
           SEND_TEST: ${{ inputs.send_test && '1' || '' }}
