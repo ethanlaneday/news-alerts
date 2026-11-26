@@ -321,7 +321,7 @@ FEEDS = [
      "url": "https://www.federalregister.gov/api/v1/documents.json?conditions[term]=USMCA&order=newest&per_page=20"},
     {"id": "fedreg-filed", "name": "U.S. Federal Register (filed, not yet published)", "official": True, "kind": "fedreg",
      "context": "Canada U.S. trade tariff",
-     "keep": r"(?i)automobile|auto parts|motor vehicle|usmca|\bcanad|section 232|steel and alumin",
+     "keep": r"(?i)automobile|auto parts|motor vehicle|usmca|section 232|steel and alumin|tariff.{0,80}canad|canad.{0,80}tariff",
      "url": "https://www.federalregister.gov/api/v1/public-inspection-documents/current.json"},
     # Regulations: each issue's table of contents is read for individual orders and regulations (hourly).
     {"id": "gazette-1", "name": "Canada Gazette, Part I", "official": True, "title_only": True, "kind": "gazette",
@@ -1549,6 +1549,25 @@ def check_urls(urls):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "gazette-debug":
+        issue = list(parse(fetch("https://www.gazette.gc.ca/rss/p1-eng.xml")))[0]
+        page = fetch(issue["link"]).decode("utf-8", "replace")
+        links = re.findall(r'<a\b[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', page, re.S)
+        rows = [(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t)).strip()[:70], urllib.parse.urljoin(issue["link"], h)) for h, t in links]
+        rows = [r for r in rows if "/rp-pr/" in r[1]]
+        print("GZ issue", issue["link"], len(rows))
+        for t, l in rows[:30]:
+            print("GZ  ", t, "|", l[-60:])
+        sub = next((l for t, l in rows if re.search(r"(?i)government notices|proposed regulations", t)), None)
+        if sub:
+            sp = fetch(sub).decode("utf-8", "replace")
+            heads = re.findall(r"<(h[2-4])\b([^>]*)>(.*?)</\1>", sp, re.S)
+            print("GZ sub", sub[-60:], len(heads))
+            for tag, attrs, t in heads[:25]:
+                print("GZ   ", tag, re.findall(r'id="([^"]+)"', attrs)[:1], re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t)).strip()[:90])
+        st = fetch("https://www150.statcan.gc.ca/n1/rss/dai-quo/0-eng.atom").decode("utf-8", "replace")
+        print("ST", re.sub(r"\s+", " ", st[st.find("<entry"):st.find("<entry") + 700]))
+        return 0
     if urls.strip().startswith("sources "):
         # Read the named sources for real and say what each returned.
         os.environ["GAZETTE_NOW"] = "1"
