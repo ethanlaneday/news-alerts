@@ -302,6 +302,19 @@ See also <https://evil.example/DocumentViewer/en/333>"""
         self.assertTrue(sent[0][2].startswith("https://www.ourcommons.ca/"))
 
 
+class GoLinks(unittest.TestCase):
+    def test_lookup_file_holds_recent_alerts_only(self):
+        import json
+        path = os.path.join(tempfile.mkdtemp(), "news.json")
+        a = dict(item("Old alert"), link="https://example.com/old")
+        b = dict(item("New alert"), link="https://example.com/new")
+        N.save_go_links(path, [a], NOW - 4 * 86400)
+        N.save_go_links(path, [b, dict(item("Bad"), link="javascript:alert(1)")], NOW)
+        links = json.load(open(os.path.join(os.path.dirname(path), "go.json")))
+        self.assertEqual(list(links), [N.item_id(b)])
+        self.assertEqual(links[N.item_id(b)][0], "https://example.com/new")
+
+
 class Icons(unittest.TestCase):
     def test_image_checks(self):
         png = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack(">II", 180, 180) + b"x" * 200
@@ -322,6 +335,9 @@ class Page(unittest.TestCase):
         for needed in ('id="list"', 'id="tabs"', 'id="filters"', 'id="ptr"', "function render()", "function renderParl(",
                        "function checkForUpdate("):
             self.assertIn(needed, html, needed)
+        go = open(os.path.join(ROOT, "go.html"), encoding="utf-8").read()
+        self.assertLess(len(go), 6000)                      # the point of this page is that it is small
+        self.assertIn("location.replace", go)
 
 
 if __name__ == "__main__":

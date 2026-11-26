@@ -21,4 +21,4 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v
       - name: The page's script parses
-        run: python3 tests/extract_script.py index.html > /tmp/page.js && node --check /tmp/page.js
+        run: for f in index.html go.html; do python3 tests/extract_script.py $f > /tmp/page.js && node --check /tmp/page.js; done
