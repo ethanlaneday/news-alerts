@@ -1125,6 +1125,10 @@ article.unseen { border-color: var(--new-line); }
         var d = res[0], taps = res[1];
         d.items = Array.isArray(d.items) ? d.items : [];
         state.data = d; state.fetchedAt = Date.now() / 1000;
+        // Article addresses for the small page that notifications open (go.html), so it needs no download.
+        var links = {};
+        d.items.slice().sort(function (x, y) { return y.seen - x.seen; }).slice(0, 300).forEach(function (i) { if (safeLink(i.link)) links[i.id] = i.link; });
+        save("news.links", links);
         Object.keys(d.tapped || {}).forEach(function (id) { taps[id] = 1; });
         Object.keys(load("news.tapped", {})).forEach(function (id) { taps[id] = 1; });
         if (state.seenIds === null) {

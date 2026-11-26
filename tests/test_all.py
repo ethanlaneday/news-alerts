@@ -280,6 +280,18 @@ See also <https://evil.example/DocumentViewer/en/333>"""
         self.assertEqual(len(rel), 2)
         self.assertEqual(sent, [])
 
+    def test_long_mail_is_worked_through_over_several_runs_and_notices_skipped(self):
+        lines = ["Health (HESA)", "Notice of Meeting:", "Meeting 47<https://www.ourcommons.ca/DocumentViewer/en/900>", "News Release:"]
+        lines += [f"Release {n}<https://www.ourcommons.ca/DocumentViewer/en/{1000 + n}>" for n in range(30)]
+        inbox = [{"id": "big", "time": 0, "title": "Committee Subscription", "text": "\n".join(lines)}]
+        state, got = {}, []
+        for run in range(4):
+            got += C.collect(state, NOW + run * 300, N, lambda *a: None, inbox=inbox, fetch=lambda url: self.PAGE)
+        links = [i["link"] for i in got]
+        self.assertEqual(len(links), 30)                      # every release, none twice
+        self.assertEqual(len(set(links)), 30)
+        self.assertFalse(any(link.endswith("/900") for link in links))   # the meeting notice is left out
+
     def test_confirmation_request_is_passed_on_once(self):
         state, sent = {}, []
         inbox = [{"id": "c1", "time": 0, "title": "Please confirm your subscription",
@@ -288,6 +300,19 @@ See also <https://evil.example/DocumentViewer/en/333>"""
             C.collect(state, NOW, N, lambda *a: sent.append(a), inbox=inbox, fetch=lambda url: "")
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0][2].startswith("https://www.ourcommons.ca/"))
+
+
+class GoLinks(unittest.TestCase):
+    def test_lookup_file_holds_recent_alerts_only(self):
+        import json
+        path = os.path.join(tempfile.mkdtemp(), "news.json")
+        a = dict(item("Old alert"), link="https://example.com/old")
+        b = dict(item("New alert"), link="https://example.com/new")
+        N.save_go_links(path, [a], NOW - 4 * 86400)
+        N.save_go_links(path, [b, dict(item("Bad"), link="javascript:alert(1)")], NOW)
+        links = json.load(open(os.path.join(os.path.dirname(path), "go.json")))
+        self.assertEqual(list(links), [N.item_id(b)])
+        self.assertEqual(links[N.item_id(b)][0], "https://example.com/new")
 
 
 class Icons(unittest.TestCase):
@@ -310,6 +335,9 @@ class Page(unittest.TestCase):
         for needed in ('id="list"', 'id="tabs"', 'id="filters"', 'id="ptr"', "function render()", "function renderParl(",
                        "function checkForUpdate("):
             self.assertIn(needed, html, needed)
+        go = open(os.path.join(ROOT, "go.html"), encoding="utf-8").read()
+        self.assertLess(len(go), 6000)                      # the point of this page is that it is small
+        self.assertIn("location.replace", go)
 
 
 if __name__ == "__main__":

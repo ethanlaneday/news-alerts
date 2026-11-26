@@ -1365,6 +1365,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip() == "committee-inbox":
+        import committee_mail
+        return committee_mail.debug_inbox()
     if urls.strip().startswith("committee-doc "):
         import committee_mail
         return committee_mail.debug(sys.modules[__name__], urls.split()[1])
@@ -1459,6 +1462,28 @@ def check_feeds(server, topic, feed_override):
             ai = f"key set but the test call failed ({model}) - see the run log"
     send(server, topic, "News alerts: source check", msg + f"\nClaude scoring: {ai}", priority=2, tags=["mag"])  # quiet: no sound or banner
     return 0
+
+
+GO_KEEP_DAYS = 3
+
+
+def save_go_links(news_path, items, now):
+    """go.json: story id -> article address for recent alerts. The small page a notification opens
+    (go.html) reads this instead of the whole news file, so it works quickly on a slow connection."""
+    path = os.path.join(os.path.dirname(news_path) or ".", "go.json")
+    try:
+        with open(path) as f:
+            links = json.load(f)
+    except Exception:
+        links = {}
+    for it in items:
+        if re.match(r"https?://", it.get("link") or ""):
+            links[item_id(it)] = [it["link"], int(now)]
+    links = {k: v for k, v in links.items() if isinstance(v, list) and now - v[1] < GO_KEEP_DAYS * 86400}
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(links, f, separators=(",", ":"))
+    os.replace(path + ".tmp", path)
 
 
 # ------------------------------- health check --------------------------------
@@ -1682,9 +1707,14 @@ def main() -> int:
         else:
             lines = [meta, snippet(it), "Signals: " + it["why"]]
         send(server, topic, f"{assoc} · {name} · {strip_source(it['title'])}", "\n".join(x for x in lines if x),
-             click=PAGE_URL + "?go=" + item_id(it) if news_path else it["link"],
+             click=PAGE_URL + "go.html?go=" + item_id(it) if news_path else it["link"],
              priority=max(1, min(5, it["level"])), tags=[ASSOCS[assoc]["emoji"], tag])
         print(f"sent L{it['level']} [{it['topic']['key']}]:", it["title"], "|", it["why"])
+    if news_path and to_send:
+        try:
+            save_go_links(news_path, to_send[:MAX_PER_RUN], now)
+        except Exception as e:
+            print(f"go links: {e}", file=sys.stderr)
     if len(to_send) > MAX_PER_RUN:
         rest = to_send[MAX_PER_RUN:]
         send(server, topic, f"+{len(rest)} more stories",
