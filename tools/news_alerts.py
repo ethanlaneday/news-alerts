@@ -640,10 +640,13 @@ def parse(xml_bytes: bytes, default_source: str = ""):
 
 def all_sources():
     for t in TOPICS:
+        # RVDA, HRAI and IDA stories usually name a town or a product, not "Canada". Their searches are
+        # already limited to Canada, so results count as Canadian for the topic filters.
+        extra = {"context": "Canada"} if t["assoc"] in ("RVDA", "HRAI", "IDA") else {}
         for i, q in enumerate(t["queries"]):
-            yield {"id": f"google:{t['key']}:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d")}
+            yield {"id": f"google:{t['key']}:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d"), **extra}
             if i < BING_QUERIES_PER_TOPIC:
-                yield {"id": f"bing:{t['key']}:{i}", "name": "", "url": BING + urllib.parse.quote(q)}
+                yield {"id": f"bing:{t['key']}:{i}", "name": "", "url": BING + urllib.parse.quote(q), **extra}
     for i, q in enumerate(FR_QUERIES):
         yield {"id": f"google:fr:{i}", "name": "", "lang": "fr", "url": GN_FR + urllib.parse.quote(q + " when:1d")}
     for i, q in enumerate(OTTAWA_QUERIES):

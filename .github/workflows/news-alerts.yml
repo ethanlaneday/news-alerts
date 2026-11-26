@@ -1,4 +1,4 @@
-name: News alerts (CADA + HEAL)
+name: News alerts
 
 on:
   schedule:
