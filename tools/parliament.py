@@ -25,7 +25,9 @@ MENTION_DAYS = 21
 AGENDA_REFRESH_H = 3
 
 # House committees to list, and whose work they mostly touch. Agenda wording can override this.
-WATCH = {"HESA": "HEAL", "CIIT": "CADA", "INDU": "CADA", "TRAN": "CADA", "ENVI": "CADA", "FINA": "BOTH"}
+WATCH = {"HESA": "HEAL", "CIIT": "CADA", "INDU": "BOTH", "TRAN": "BOTH", "ENVI": "BOTH", "FINA": "BOTH",
+         "RNNR": "HRAI", "HUMA": "BOTH"}
+ASSOCS = ("CADA", "HEAL", "RVDA", "HRAI", "IDA")
 # Bills to follow whatever their title says, e.g. "C-12". Sponsors are matched on their name.
 TRACK_BILLS = set()
 TRACK_SPONSORS = {"michael ma": "michaelma"}
@@ -35,13 +37,20 @@ BILL_WORDS = {
             r"competition act|consumer (protection|rights|data)|used car|right to repair|excise|luxury tax|zero.emission|carbon|fuel|bank act|interest rate",
     "HEAL": r"health|medical|medicine|pharmacare|pharmac|\bdrugs?\b(?! traffick)|dental|nurs|physician|doctor|patient|"
             r"opioid|tobacco|vaping|disabilit|seniors|(long-term|palliative|primary|connected|home) care|artificial intelligence|\bAI\b",
+    "RVDA": r"recreational vehicles?|\bRVs?\b|campgrounds?|camping|motorhomes?|trailers?\b|national parks|tourism",
+    "HRAI": r"heat pumps?|refrigerant|halocarbon|energy efficiency|building code|heating|air conditioning|retrofit|"
+            r"apprentice|skilled trades|red seal",
+    "IDA": r"downtown|main street|homeless|encampment|housing|public transit|municipal|bail\b|retail crime|urban",
     "BOTH": r"budget|economic statement",
 }
 # Organisations worth flagging when they appear before a committee.
 WITNESS_WORDS = (r"automobile dealers|vehicle manufacturers|global automakers|automotive parts|\bunifor\b|"
                  r"organizations for health action|canadian medical association|canadian nurses association|healthcarecan|"
                  r"canadian pharmacists|canadian dental|canadian psychological|mental health commission|"
-                 r"canadian institute for health information|canada health infoway")
+                 r"canadian institute for health information|canada health infoway|"
+                 r"recreation vehicle dealers|\brvda\b|camping and rv council|heating, refrigeration|\bhrai\b|"
+                 r"downtown association|business improvement|federation of canadian municipalities|"
+                 r"canadian home builders|tourism industry association")
 
 
 def get_json(na, url):
@@ -92,7 +101,7 @@ def read_bills(na):
                 topic = topic_for(na, "") or next((t for t in na.TOPICS if t["key"] == key), None)
         text = f"{long_t} {short_t}"
         text = re.sub(r"(?i)\b(soil|animal|plant|forest|ocean) health\b|child care", " ", text)
-        assoc = next((a for a in ("BOTH", "CADA", "HEAL") if re.search(BILL_WORDS[a], text, re.I)), "")
+        assoc = next((a for a in ("BOTH", "RVDA", "HRAI", "CADA", "HEAL", "IDA") if re.search(BILL_WORDS[a], text, re.I)), "")
         if not (topic or assoc or num in TRACK_BILLS):
             continue
         guess = topic_for(na, text)
@@ -111,7 +120,8 @@ def read_bills(na):
             "status": (b.get("StatusNameEn") or b.get("LatestCompletedMajorStageNameWithChamberSuffix") or "").strip(),
             "changed": last,
             "assoc": topic["assoc"] if topic else (assoc or "BOTH"),
-            "topic": topic["label"] if topic else {"CADA": "Auto and trade", "HEAL": "Health", "BOTH": "Budget"}.get(assoc, "Tracked"),
+            "topic": topic["label"] if topic else {"CADA": "Auto and trade", "HEAL": "Health", "BOTH": "Budget", "RVDA": "RVs and camping",
+                                                              "HRAI": "Heating and cooling", "IDA": "Cities and downtowns"}.get(assoc, "Tracked"),
             "link": f"https://www.parl.ca/legisinfo/en/bill/{b.get('ParliamentNumber')}-{b.get('SessionNumber')}/{num.lower()}",
         })
     out.sort(key=lambda x: -x["changed"])
@@ -253,9 +263,17 @@ def read_mentions(na, old, now):
 
 
 # ---------------------------------------------------------------- notes and priorities
-NOTE_SYSTEM = """You help a government-relations professional in Ottawa who follows two associations.
+NOTE_SYSTEM = """You help a government-relations professional in Ottawa who follows five associations.
 CADA: Canada's franchised new-car dealers. Their files: auto trade and tariffs, vehicle and emissions rules, EV \
 policy, taxes on vehicles, consumer, financing, privacy and competition rules that bind dealers, auto plants.
+RVDA: Canada's RV dealers. Their files: tariffs and remission on RVs and parts, the luxury tax and vehicle sales taxes, \
+campgrounds and their tax treatment, camping, Parks Canada and domestic tourism.
+HRAI: heating, refrigeration and air-conditioning manufacturers and contractors. Their files: heat pump and home \
+retrofit programs, refrigerant (HFC) rules, energy-efficiency regulations and building codes, heating electrification, \
+tariffs on HVAC equipment, skilled trades and apprenticeship, housing construction.
+IDA: downtown and main-street business districts. Their files: downtown recovery, office vacancy and conversions, \
+federal office footprint, public safety, bail and retail crime, homelessness and encampments, federal funding for \
+cities, transit and housing, small-business supports.
 HEAL: a coalition of national health organizations. Their files: federal health funding, the health workforce, \
 pharmacare and drugs, mental health, health data and AI in health care, public health, medical assistance in \
 dying, the Canada Health Act, seniors' and long-term care.
@@ -272,7 +290,8 @@ For each committee MEETING return:
 its member or peer organizations testifying, a minister or senior officials appearing on those files, or \
 clause-by-clause on a relevant bill. 1 = related to the sector but not pressing. 0 = routine or unrelated \
 (committee business, election of a chair, a study on another subject).
-- "assoc": CADA, HEAL, BOTH or NONE.
+- "assoc": the one association it matters to most (CADA, HEAL, RVDA, HRAI or IDA), BOTH if it clearly matters to \
+several of them, or NONE.
 - "why": 16 words at most, concrete, saying why it matters (or what it is, for priority 0)."""
 NOTE_SCHEMA = {
     "type": "object",
@@ -283,7 +302,7 @@ NOTE_SCHEMA = {
             "required": ["n", "note", "relevance"], "additionalProperties": False}},
         "meetings": {"type": "array", "items": {
             "type": "object", "properties": {"n": {"type": "integer"}, "priority": {"type": "integer"},
-                                             "assoc": {"type": "string", "enum": ["CADA", "HEAL", "BOTH", "NONE"]},
+                                             "assoc": {"type": "string", "enum": ["CADA", "HEAL", "RVDA", "HRAI", "IDA", "BOTH", "NONE"]},
                                              "why": {"type": "string"}},
             "required": ["n", "priority", "assoc", "why"], "additionalProperties": False}},
     },
@@ -408,7 +427,7 @@ def annotate(na, data, now, asker=None):
         c = notes.get("m:" + m["url"], {})
         if c.get("key") == agenda_key(m):
             m["priority"], m["why"] = c["priority"], c["why"]
-            if c["assoc"] in ("CADA", "HEAL", "BOTH"):
+            if c["assoc"] in ASSOCS + ("BOTH",):
                 m["assoc"] = c["assoc"]
         else:   # no judgment yet: fall back to the word matches
             m["priority"], m["why"] = (2 if m.get("topic") or m.get("witness") else 0), ""

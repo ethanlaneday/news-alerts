@@ -66,7 +66,13 @@ AUTO_CORE = r"\bauto|automo|vehicle|\bcars?\b|\bev\b|\bevs\b|electric vehicle|de
 ASSOCS = {
     "CADA": {"emoji": "red_car", "name_re": r"(?i:canadian automobile dealers)|\bCADA\b"},
     "HEAL": {"emoji": "hospital", "name_re": r"(?i:organizations for health action|health action lobby)|\bHEAL\b"},
+    "RVDA": {"emoji": "minibus", "name_re": r"(?i:recreation(al)? vehicle dealers|recreational dealers.? association)|\bRVDA\b"},
+    "HRAI": {"emoji": "thermometer", "name_re": r"(?i:heating,? refrigeration (and|&) air conditioning institute)|\bHRAI\b"},
+    "IDA": {"emoji": "cityscape", "name_re": r"(?i:international downtown association)|\bIDA Canada\b"},
 }
+ASSOC_ORDER = ["CADA", "HEAL", "RVDA", "HRAI", "IDA"]
+RV_WORDS = re.compile(r"\bRVs?\b|(?i:recreational vehicle|recreation vehicle|motorhome|motor home|travel trailer|camper van|"
+                      r"fifth.wheel|towable|rv dealer|rv industry|rv sales)")
 
 CANADA_H = CANADA + r"|provinc|\bfpt\b|health human resources|\bcihi\b|health workforce canada|camimh"   # health news often says "provinces", not "Canada"
 AI_WORDS = re.compile(
@@ -77,6 +83,77 @@ HEALTH = r"health|hospital|nurs|physician|doctor|pharma|drug|dental|mental healt
          r"care home|patient|medic|wait time|primary care|paramedic|psycholog|therap|chiropract"
 
 TOPICS = [
+    # ---- RVDA: Recreation Vehicle Dealers Association of Canada ----
+    # Specific subjects come before CADA's broader trade and market topics, so an RV or heat-pump
+    # story is filed with the association it actually concerns.
+    {"key": "rvda", "assoc": "RVDA", "label": "RVDA", "base": 3,
+     "require": [r"recreation(al)? vehicle dealers|recreational dealers.? association|\bRVDA\b|rvda\.ca"],
+     "queries": ['"RVDA of Canada" OR "Recreation Vehicle Dealers Association of Canada"', "site:rvda.ca"]},
+    {"key": "rv", "assoc": "RVDA", "label": "RV industry", "base": 3,
+     "require": [CANADA, RV_WORDS],
+     "queries": ["Canada RV (dealers OR sales OR industry OR shipments)",
+                 'Canada ("recreational vehicle" OR motorhome OR "travel trailer") (tariff OR surtax OR remission OR tax)',
+                 'Canada RV (tariffs OR "luxury tax" OR financing OR prices)',
+                 '"Go RVing Canada" OR "Canadian Recreational Vehicle Association" OR CRVA',
+                 'Canada ("Thor Industries" OR Winnebago OR "Forest River") RV']},
+    {"key": "camping", "assoc": "RVDA", "label": "Camping/tourism", "base": 2, "title_only": True,
+     "require": [CANADA, r"campgrounds?|camping|campsites?|rv parks?|outdoor hospitality|parks canada"],
+     "queries": ['Canada campground (tax OR "small business deduction" OR fees OR industry)',
+                 "Parks Canada camping (fees OR reservations OR season)",
+                 '"Canadian Camping and RV Council" OR CCRVC',
+                 "Canada domestic tourism (camping OR road trips OR travel to U.S.)"]},
+    # ---- HRAI: Heating, Refrigeration and Air Conditioning Institute of Canada ----
+    {"key": "hrai", "assoc": "HRAI", "label": "HRAI", "base": 3,
+     "require": [r"heating,? refrigeration (and|&) air conditioning institute|\bHRAI\b|hrai\.ca"],
+     "queries": ['"Heating, Refrigeration and Air Conditioning Institute" OR "HRAI"', "site:hrai.ca"]},
+    {"key": "heatpumps", "assoc": "HRAI", "label": "Heat pumps/retrofits", "base": 3,
+     "require": [CANADA, r"heat pumps?|greener homes|home retrofits?|retrofit (program|rebate|grant|loan)|oil to heat pump|"
+                         r"energy.efficien\w+ (rebate|program|retrofit|grant)|home heating|electrification of heating"],
+     "queries": ['Canada "heat pump" (rebate OR program OR grant OR sales OR mandate)',
+                 '"Greener Homes" OR "Oil to Heat Pump Affordability"',
+                 "Canada home retrofit (program OR rebate OR funding OR loan)",
+                 "Canada home heating (natural gas ban OR electrification OR costs OR oil)"]},
+    {"key": "hvac", "assoc": "HRAI", "label": "HVAC rules/industry", "base": 3, "title_only": True,
+     "require": [CANADA, re.compile(r"\bHVACR?\b|\bHFCs?\b|(?i:refrigerants?|hydrofluorocarbon|air conditioners?|air conditioning|"
+                                    r"furnaces?|boilers?|ventilation|building codes?|energy efficiency regulations|"
+                                    r"heating and cooling|refrigeration)")],
+     "queries": ["Canada HVAC (industry OR contractors OR tariffs OR shortage OR regulations)",
+                 "Canada refrigerant (HFC OR phase-down OR regulations)",
+                 'Canada ("building code" OR "energy efficiency regulations") (heating OR cooling OR HVAC)',
+                 "Canada (air conditioner OR furnace) (tariff OR surtax OR regulations OR standards)"]},
+    {"key": "trades", "assoc": "HRAI", "label": "Skilled trades", "base": 2, "title_only": True,
+     "require": [CANADA, r"skilled trades|apprentice|red seal|tradespeople|trades (shortage|training|workers|workforce)"],
+     "queries": ["Canada skilled trades (shortage OR apprenticeship OR funding OR immigration)",
+                 "Canada apprenticeship (grant OR program OR funding) federal"]},
+    # ---- IDA Canada: International Downtown Association (downtowns, main streets, business districts) ----
+    # These subjects are common words, so they are matched on the headline only.
+    {"key": "ida", "assoc": "IDA", "label": "IDA", "base": 3,
+     "require": [r"international downtown association|\bIDA Canada\b"],
+     "queries": ['"International Downtown Association" OR "IDA Canada"']},
+    {"key": "downtowns", "assoc": "IDA", "label": "Downtowns", "base": 3, "title_only": True,
+     "require": [CANADA, re.compile(r"\bBIAs?\b|(?i:downtowns?|main streets?|business improvement (area|district|association|zone)|"
+                                    r"city cent(re|er)|office vacanc|office.to.residential|office conversions?|return.to.office|"
+                                    r"foot traffic|storefront)")],
+     "queries": ["Canada downtown (recovery OR revitalization OR vacancy OR foot traffic)",
+                 'Canada "main street" (businesses OR funding OR revitalization)',
+                 '"business improvement area" OR "business improvement association" Canada',
+                 "Canada office (conversion OR vacancy) downtown",
+                 'federal ("return to office" OR "office buildings" OR "federal buildings") downtown',
+                 "Canada downtown (safety OR disorder OR crime) businesses"]},
+    {"key": "urban", "assoc": "IDA", "label": "Homelessness/safety", "base": 2, "title_only": True,
+     "require": [CANADA, r"homeless|encampments?|supportive housing|open drug use|street disorder|public disorder|"
+                         r"bail reform|retail (crime|theft)|shoplifting"],
+     "queries": ["Canada homelessness (federal funding OR encampments OR strategy)",
+                 'Canada ("bail reform" OR "retail crime") businesses',
+                 "Canada encampments (city OR downtown OR court ruling)"]},
+    {"key": "cities", "assoc": "IDA", "label": "Cities/transit", "base": 2, "title_only": True,
+     "require": [CANADA, re.compile(r"\bFCM\b|(?i:public transit|transit fund|municipal (infrastructure|funding|finance)|"
+                                    r"housing accelerator|community-building fund|federation of canadian municipalities|"
+                                    r"big city mayors|build canada homes)")],
+     "queries": ['Canada ("public transit fund" OR "transit funding") federal cities',
+                 '"Federation of Canadian Municipalities" OR "Big City Mayors"',
+                 'Canada ("Housing Accelerator Fund" OR "Build Canada Homes") cities']},
+    # ---- CADA: Canadian Automobile Dealers Association ----
     {"key": "cada", "assoc": "CADA", "label": "CADA", "base": 3,
      "require": [r"canadian automobile dealers|\bCADA\b|cada\.ca"],
      "queries": ['"Canadian Automobile Dealers Association"',
@@ -563,10 +640,13 @@ def parse(xml_bytes: bytes, default_source: str = ""):
 
 def all_sources():
     for t in TOPICS:
+        # RVDA, HRAI and IDA stories usually name a town or a product, not "Canada". Their searches are
+        # already limited to Canada, so results count as Canadian for the topic filters.
+        extra = {"context": "Canada"} if t["assoc"] in ("RVDA", "HRAI", "IDA") else {}
         for i, q in enumerate(t["queries"]):
-            yield {"id": f"google:{t['key']}:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d")}
+            yield {"id": f"google:{t['key']}:{i}", "name": "", "url": GN + urllib.parse.quote(q + " when:1d"), **extra}
             if i < BING_QUERIES_PER_TOPIC:
-                yield {"id": f"bing:{t['key']}:{i}", "name": "", "url": BING + urllib.parse.quote(q)}
+                yield {"id": f"bing:{t['key']}:{i}", "name": "", "url": BING + urllib.parse.quote(q), **extra}
     for i, q in enumerate(FR_QUERIES):
         yield {"id": f"google:fr:{i}", "name": "", "lang": "fr", "url": GN_FR + urllib.parse.quote(q + " when:1d")}
     for i, q in enumerate(OTTAWA_QUERIES):
@@ -673,8 +753,10 @@ def classify(item):
         return next((TOPIC_BY_KEY[k] for k, pats in FR_TOPICS if all(rx.search(text) for rx in pats)), None)
     if item.get("context"):
         text += " " + item["context"]
+    head = item["title"] + (" " + item["context"] if item.get("context") else "")
     for t in TOPICS:
-        if all((r.search(text) if isinstance(r, re.Pattern) else re.search(r, text, re.I)) for r in t["require"]):
+        where = head if t.get("title_only") else text
+        if all((r.search(where) if isinstance(r, re.Pattern) else re.search(r, where, re.I)) for r in t["require"]):
             return t
     return None
 
@@ -738,6 +820,23 @@ ambient dictation, clinical AI, privacy and rules for health AI), including MP M
 and the legislation he is expected to lead; the health minister, Health Canada, \
 Parliament's health committees, federal-provincial health ministers, and health bills.
 
+RVDA - Recreation Vehicle Dealers Association of Canada, representing RV dealers. They want to know about: RVDA \
+itself; tariffs, counter-tariffs and remission affecting RVs, trailers and RV parts; RV sales, shipments, prices and \
+financing; the luxury tax and sales taxes on vehicles; campgrounds and their tax treatment; Parks Canada and camping; \
+domestic tourism and cross-border travel.
+
+HRAI - Heating, Refrigeration and Air Conditioning Institute of Canada, representing HVACR manufacturers, wholesalers \
+and contractors. They want to know about: HRAI itself; heat pump and home retrofit programs (Greener Homes, Oil to Heat \
+Pump Affordability) and their funding; refrigerant rules (HFC phase-down); energy-efficiency regulations and building \
+codes; natural gas bans and heating electrification; tariffs on heating and cooling equipment; skilled trades and \
+apprenticeship; housing construction as it affects HVAC demand.
+
+IDA - IDA Canada, the International Downtown Association's Canadian arm, representing downtown and main-street \
+business districts (BIAs). They want to know about: IDA itself; downtown recovery, office vacancy and conversions, \
+federal return-to-office and federal buildings; public safety, disorder, retail crime and bail reform as they affect \
+downtown businesses; homelessness and encampments; federal funding for cities, transit and housing; main-street \
+small-business supports and tourism. A purely local story about one city with no wider policy angle is usually 2.
+
 Rate each headline 1-5 for its association:
 5 = a decision or event that changes things now (for HEAL, Michael Ma tabling his AI legislation counts). CADA: tariffs imposed or lifted, a CUSMA deal or \
 breakdown, an EV mandate scrapped or changed, a major Canadian plant closing or moving. HEAL: a federal \
@@ -778,7 +877,9 @@ Items from "Parliament (Hansard)" are remarks made in the House or a committee: 
 association's issues (a passing mention is 2; substantive debate, testimony or a minister's commitment is 3-4).
 "summary": one or two plain sentences (max 40 words) saying what happened, using only facts in the headline and snippet; never invent numbers, dates or quotes.
 "why": at most 15 words on what it means for that association's members (for CADA: prices, supply, \
-demand, costs, rules for dealers; for HEAL: funding, workforce, access to care, federal policy)."""
+demand, costs, rules for dealers; for HEAL: funding, workforce, access to care, federal policy; for RVDA: RV costs, \
+sales, taxes, camping demand; for HRAI: equipment rules, program funding, contractor workload, trades; for IDA: \
+downtown businesses, safety, foot traffic, federal funding for cities)."""
 
 AI_SCHEMA = {
     "type": "object",
@@ -984,14 +1085,17 @@ NEWS_KEEP_DAYS = 7
 BRIEF_EVERY_MIN = 60   # refresh Claude's "Today in brief" at most this often
 
 BRIEF_SYSTEM = """You write a short morning-briefing style summary for someone in Ottawa government \
-relations who follows two associations: CADA (Canadian Automobile Dealers Association) and HEAL \
-(Organizations for Health Action, a coalition of national health organizations). You get today's \
+relations who follows five associations: CADA (Canadian Automobile Dealers Association), HEAL \
+(Organizations for Health Action, a coalition of national health organizations), RVDA (Recreation Vehicle Dealers \
+Association of Canada), HRAI (Heating, Refrigeration and Air Conditioning Institute of Canada) and IDA (IDA Canada, \
+downtown and main-street business districts). You get today's \
 headlines with their importance (5 = critical, 2 = FYI). For each association write one or two plain \
 sentences on what matters most today, most important first. Use only facts in the headlines and \
-summaries; never invent numbers, names or dates. If an association has nothing notable, say so in a few words."""
+summaries; never invent numbers, names or dates. If an association has no headlines or nothing notable, return an \
+empty string for it."""
 
-BRIEF_SCHEMA = {"type": "object", "properties": {"CADA": {"type": "string"}, "HEAL": {"type": "string"}},
-                "required": ["CADA", "HEAL"], "additionalProperties": False}
+BRIEF_SCHEMA = {"type": "object", "properties": {a: {"type": "string"} for a in ASSOC_ORDER},
+                "required": list(ASSOC_ORDER), "additionalProperties": False}
 
 
 def load_news(path: str) -> dict:
@@ -1037,7 +1141,7 @@ def write_brief(items, now):
     except ImportError:
         return None
     recent = sorted((i for i in items if now - i["seen"] < 86400 and i["level"] >= 3),
-                    key=lambda i: (-i["level"], -i["seen"]))[:40]
+                    key=lambda i: (-i["level"], -i["seen"]))[:60]
     if not recent:
         return None
     lines = [f"- [{i['assoc']} / {i['topic']} / level {i['level']}] {i['title']} ({i['source']})"
@@ -1054,7 +1158,7 @@ def write_brief(items, now):
         if resp.stop_reason in ("refusal", "max_tokens"):
             return None
         d = json.loads(next(b.text for b in resp.content if b.type == "text"))
-        return {"at": int(now), "CADA": d["CADA"].strip()[:600], "HEAL": d["HEAL"].strip()[:600]}
+        return {"at": int(now), **{a: str(d.get(a) or "").strip()[:600] for a in ASSOC_ORDER}}
     except Exception as e:  # the brief is a nice-to-have; never let it break alerts
         print(f"brief: {type(e).__name__}: {e}", file=sys.stderr)
         return None
@@ -1151,7 +1255,7 @@ OUTLET_SITES = {
     "automotive news": "autonews.com", "automotive news canada": "autonews.com", "driving.ca": "driving.ca",
     "electric autonomy canada": "electricautonomy.ca", "canadian auto dealer": "canadianautodealer.ca",
     "motor1.com": "motor1.com", "ford authority": "fordauthority.com", "just auto": "just-auto.com", "cbt news": "cbtnews.com",
-    "canadian automobile dealers association (cada)": "cada.ca", "hospital news": "hospitalnews.com",
+    "canadian automobile dealers association (cada)": "cada.ca", "rvda of canada": "rvda.ca", "hrai": "hrai.ca", "hospital news": "hospitalnews.com",
     "canadian medical association": "cma.ca", "government of canada": "canada.ca", "bank of canada": "bankofcanada.ca",
     "parliament (hansard)": "ourcommons.ca", "parliament of canada (legisinfo)": "parl.ca", "am 800 cklw": "iheartradio.ca",
 }
@@ -1990,7 +2094,7 @@ def main() -> int:
             print(f"news page update failed: {type(e).__name__}: {e}", file=sys.stderr)
     if morning:
         brief = (news or {}).get("brief") or {}
-        parts = [f"{a}: {brief[a]}" for a in ("CADA", "HEAL") if brief.get(a) and now - brief.get("at", 0) < 3 * 3600]
+        parts = [f"{a}: {brief[a]}" for a in ASSOC_ORDER if brief.get(a) and now - brief.get("at", 0) < 3 * 3600]
         if held:
             top = sorted(held, key=lambda h: -h["level"])
             parts.append("Overnight:\n" + "\n".join(
