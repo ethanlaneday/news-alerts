@@ -406,7 +406,7 @@ class Page(unittest.TestCase):
     def test_page_has_its_working_parts(self):
         html = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
         for needed in ('id="list"', 'id="tabs"', 'id="filters"', 'id="ptr"', "function render()", "function renderParl(",
-                       "function checkForUpdate("):
+                       "function checkForUpdate(", "function askPrompt(", "https://claude.ai/new?q="):
             self.assertIn(needed, html, needed)
         go = open(os.path.join(ROOT, "go.html"), encoding="utf-8").read()
         self.assertLess(len(go), 6000)                      # the point of this page is that it is small

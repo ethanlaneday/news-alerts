@@ -219,6 +219,10 @@ article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
 .fold-body ol.keys li { padding: 4px 0; }
 .fold-bar { min-height: 44px; }
 ul.rows.fold-rows { padding: 0; background: transparent; } ul.rows.fold-rows li:first-child { border-top: none; padding-top: 2px; }
+.ask-row { display: flex; justify-content: flex-end; margin-top: 2px; }
+.ask { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--chip-line); background: var(--card); color: var(--body); font-size: 13px; font-weight: 600; text-decoration: none; }
+.ask svg { width: 15px; height: 15px; color: #D97757; }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -323,6 +327,10 @@ article.unseen { border-color: var(--new-line); }
   ];
   var SEEN_TOPIC = "news-seen-57d844c41359b1b3";   // carries only story ids; see tools/news_alerts.py
   var ASSOCS = ["CADA", "HEAL", "RVDA", "HRAI", "IDA"];   // the associations followed; colours are set in the styles above
+  var ASSOC_NAMES = { CADA: "the Canadian Automobile Dealers Association (CADA)", HEAL: "Organizations for Health Action (HEAL)",
+    RVDA: "the Recreation Vehicle Dealers Association of Canada (RVDA)",
+    HRAI: "the Heating, Refrigeration and Air Conditioning Institute of Canada (HRAI)",
+    IDA: "IDA Canada (the International Downtown Association)" };
   var LEVELS = [
     { n: 5, label: "CRITICAL", color: "var(--crit)" },
     { n: 4, label: "HIGH", color: "var(--high)" },
@@ -457,6 +465,41 @@ article.unseen { border-color: var(--new-line); }
   }
   function byImportance(a, b) { return b.level - a.level || b.seen - a.seen || b.published - a.published; }
   function levelOf(n) { return LEVELS.filter(function (L) { return L.n === n; })[0] || LEVELS[LEVELS.length - 1]; }
+
+  // ---- "Ask Claude": opens a new Claude chat with a request for a full breakdown of the story.
+  function askPrompt(t, st) {
+    var i = t.lead, day = function (sec) { return new Date(sec * 1000).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" }); };
+    var who = ASSOC_NAMES[i.assoc] || i.assoc;
+    // The request comes first so it is never cut off; the story's details follow, within a length limit.
+    var lines = ["Give me a detailed breakdown and background on this news story. I work in government relations in Ottawa and follow it for " + who + ".", "",
+      "Please search for the latest reporting and cover: what happened and why now; the background and history; " +
+      "the key players and their positions; what it means for " + i.assoc + " and its members; the federal government's role " +
+      "and any relevant bills, regulations or committee work; and what to watch next. Cite your sources and say clearly where facts are uncertain or disputed.", ""];
+    if (st || t.items.length > 1) lines.push("Story: " + ((st && st.name) || t.story || i.title));
+    if (st && st.stands) lines.push("Where it stands: " + st.stands);
+    if (st && st.keys.length) {
+      lines.push("", "Key developments so far:");
+      st.keys.slice(0, 6).forEach(function (k) { lines.push("- " + k.date + ": " + k.text); });
+    }
+    lines.push("", t.items.length > 1 ? "Recent coverage:" : "Article:");
+    t.items.slice().sort(function (a, b) { return b.published - a.published; }).slice(0, t.items.length > 1 ? 6 : 1).forEach(function (x) {
+      // Google News links are long redirects that say nothing; the headline, outlet and date identify the article.
+      var link = safeLink(x.link), direct = link && !/^https?:\/\/news\.google\.com\//i.test(link) && link.length < 200 ? " " + link : "";
+      lines.push("- " + x.title + " (" + outletName(x) + ", " + day(x.published) + ")" + direct);
+    });
+    if (t.items.length === 1 && i.summary) lines.push("Summary: " + i.summary);
+    var text = lines.join("\n");
+    return text.length > 2400 ? text.slice(0, 2400).replace(/\n[^\n]*$/, "") : text;
+  }
+  function askRow(t, st) {
+    return el("div", { class: "ask-row" }, [el("a", { class: "ask", target: "_blank", rel: "noopener",
+      href: "https://claude.ai/new?q=" + encodeURIComponent(askPrompt(t, st)), "aria-label": "Ask Claude for a detailed breakdown of this story" }, [
+      (function () { var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true");
+        var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p.setAttribute("d", "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z");
+        p.setAttribute("fill", "currentColor"); s.appendChild(p); return s; })(),
+      document.createTextNode("Ask Claude")])]);
+  }
 
   // One card per ongoing story: articles that share a thread are grouped.
   function threads(items) {
@@ -700,7 +743,8 @@ article.unseen { border-color: var(--new-line); }
             freshKeys.length ? fk : null,
             newArts.length ? el("div", { class: "kicker-row" }, [el("span", { class: "kicker" }, [el("span", { class: "n",
               text: newArts.length === 1 ? "NEW ARTICLE" : newArts.length + " NEW ARTICLES" })]), newPill(unseen)]) : null,
-            newArts.length ? na : null
+            newArts.length ? na : null,
+            askRow(t, st)
           ]),
           foldBar("Show full story · " + t.items.length + " articles")
         ]);
@@ -716,7 +760,7 @@ article.unseen { border-color: var(--new-line); }
           el("div", { class: "kicker-row" }, [el("span", { class: "kicker", text: "LATEST" }), inNew ? newPill(unseen) : null]),
           el("div", { class: "headline" }, [titleNode(i, getCard, ids)]),
           outletRow(i)
-        ].concat(bodyParts(i))),
+        ].concat(bodyParts(i)).concat([askRow(t, st)])),
         shown.length ? el("div", { class: "tl-wrap" }, [el("span", { class: "kicker", text: st ? "RECENT COVERAGE" : "MORE ON THIS STORY" }), tl]) : null,
         t.rest.length > firstFew.length ? el("button", { type: "button", class: "more-bar", "aria-expanded": String(isOpen), onclick: toggle },
           [document.createTextNode(isOpen ? "Show fewer" : "Show " + (t.rest.length - firstFew.length) + (st ? " earlier articles" : " more articles")), chevron(isOpen)]) : null,
@@ -755,7 +799,7 @@ article.unseen { border-color: var(--new-line); }
             el("div", { class: "right" }, [lvlPill(i.level), inNew ? newPill(unseen) : null])
           ]),
           el("div", { class: "headline" }, [titleNode(i, getCard, ids)])
-        ].concat(bodyParts(i))),
+        ].concat(bodyParts(i)).concat([askRow(t, st)])),
         bar, rows
       ];
     }
