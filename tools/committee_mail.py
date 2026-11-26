@@ -92,11 +92,11 @@ def parse_doc(page: str, url: str, fallback=None):
         if re.match(r"(?i)^(for more information|- ?30 ?-|clerk of the|tel(ephone)?\b|e-?mail\b)", ln):
             text_lines = text_lines[:i]
             break
-    long_lines = [ln for ln in text_lines if len(ln) > 60]
-    title = fallback.get("hint") or ""
-    if not title:   # the headline is the first short line before the body text
-        first_long = text_lines.index(long_lines[0]) if long_lines else len(text_lines)
-        title = next((ln for ln in text_lines[:first_long] if 15 <= len(ln) <= 200 and not re.search(r"\d{4}$", ln)), "")
+    # The headline is the first proper line of the release; the body is the paragraphs after it.
+    dateline = re.compile(r"(?i)^(ottawa|[a-z]+ \d{1,2}, \d{4}|\d{4}-\d\d-\d\d)")
+    head_at = next((i for i, ln in enumerate(text_lines) if 15 <= len(ln) <= 220 and not dateline.match(ln)), None)
+    title = fallback.get("hint") or (text_lines[head_at] if head_at is not None else "")
+    long_lines = [ln for ln in text_lines[(head_at + 1 if head_at is not None else 0):] if len(ln) > 60]
     return {"url": url, "title": (title or desc or "Committee item")[:220], "kind": kind,
             "code": code or "", "committee": (html.unescape(inst.group(1)) if inst else fallback.get("committee", "")),
             "ts": int(ts), "text": " ".join(long_lines)[:1500]}
