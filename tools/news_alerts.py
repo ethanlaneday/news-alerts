@@ -1365,6 +1365,9 @@ def read_all(feed_override):
 
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip().startswith("committee-doc "):
+        import committee_mail
+        return committee_mail.debug(sys.modules[__name__], urls.split()[1])
     if urls.strip() == "keystones":
         import keystones
         return keystones.debug(sys.modules[__name__])
@@ -1393,6 +1396,9 @@ def probe(urls):
                 if mark in text:
                     cut = text[text.find(mark) - 200: text.find(mark) + 1500]
                     print("   found:", re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", cut))))
+                docs = re.findall(r'href="([^"]*DocumentViewer[^"]*)"[^>]*>\s*([^<]{0,90})', text)
+                if docs:
+                    print(f"   document links ({len(docs)}):", docs[:10])
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:
@@ -1529,7 +1535,20 @@ def main() -> int:
                    for e in state["sent"] if now - e[1] < SIMILAR_HOURS * 3600]
 
     fresh, ok, total, new_seeds, failed_sources = [], 0, 0, [], []
-    for src, items, err in read_all(feed_override):
+    results = list(read_all(feed_override))
+    committee_items = []
+    if not feed_override:   # items from the House of Commons committee e-mail subscription
+        try:
+            import committee_mail
+            committee_items = committee_mail.collect(
+                state, now, sys.modules[__name__],
+                lambda title, msg, link: send(server, topic, title, msg, click=link, priority=4, tags=["incoming_envelope"]))
+            committee_mail.record(os.environ.get("NEWS_FILE", "").strip(), committee_items, now, sys.modules[__name__])
+        except Exception as e:
+            print(f"committee inbox failed: {e}", file=sys.stderr)
+        if committee_items:
+            results.append(({"id": "mail:committees"}, committee_items, None))
+    for src, items, err in results:
         total += 1
         if err:
             print(f"[{src['id']}] failed: {err}", file=sys.stderr)

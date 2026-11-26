@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 os.environ.pop("ANTHROPIC_API_KEY", None)   # tests never call Claude
 
+import committee_mail as C  # noqa: E402
 import health  # noqa: E402
 import keystones as K  # noqa: E402
 import news_alerts as N  # noqa: E402
@@ -231,6 +232,62 @@ class Health(unittest.TestCase):
         self.assertEqual(health.decide(60, state, NOW + 600, 12)[0], ["restart"])      # no repeat within six hours
         self.assertEqual(health.decide(50, {}, NOW, 3)[0], ["restart"])                # quiet overnight
         self.assertEqual(health.decide(3, state, NOW + 900, 12)[0], ["recovered"])
+
+
+class CommitteeMail(unittest.TestCase):
+    MAIL = """Dear Subscriber,
+As requested, here are the new Committee items posted on the parliamentary website since your last update:
+Health (HESA)
+News Release:
+Committee Begins Study of Artificial Intelligence in Health Care<https://www.ourcommons.ca/DocumentViewer/en/111>
+Official Languages (LANG)
+News Release:
+Use of French in Private Businesses<https://www.ourcommons.ca/DocumentViewer/en/222>
+Unsubscribe <https://www.ourcommons.ca/cmte-subscription/en/NewsletterUnsubscribe?UnsubscribeCode=x>
+See also <https://evil.example/DocumentViewer/en/333>"""
+    PAGE = """<html><head><meta name="description" content="Committee News Release - November 24, 2026 - HESA (45-1) - House of Commons of Canada" />
+<meta name="Institution" content="Health" /></head><body><nav>Menu</nav><p>NEWS RELEASE</p><p>For immediate release</p>
+<p>Committee Begins Study of Artificial Intelligence in Health Care</p>
+<p>Ottawa, November 24, 2026</p>
+<p>The Standing Committee on Health will study the use of artificial intelligence, including AI scribes, in health care across Canada.</p>
+<p>For more information, please contact:</p><p>Clerk of the committee</p></body></html>"""
+
+    def test_only_house_documents_are_taken_from_the_mail(self):
+        found = C.parse_mail(self.MAIL)
+        self.assertEqual([f["url"][-3:] for f in found], ["111", "222"])
+        self.assertEqual((found[0]["code"], found[0]["kind"]), ("HESA", "News Release"))
+        self.assertIn("Artificial Intelligence", found[0]["hint"])
+
+    def test_document_page_is_read(self):
+        doc = C.parse_doc(self.PAGE, "https://www.ourcommons.ca/DocumentViewer/en/111")
+        self.assertEqual((doc["code"], doc["committee"], doc["kind"]), ("HESA", "Health", "News Release"))
+        self.assertEqual(datetime.fromtimestamp(doc["ts"], ZoneInfo("America/Toronto")).strftime("%Y-%m-%d"), "2026-11-24")
+        self.assertIn("AI scribes", doc["text"])
+        self.assertNotIn("Clerk", doc["text"])
+        self.assertEqual(doc["title"], "Committee Begins Study of Artificial Intelligence in Health Care")
+
+    def test_items_are_collected_once_and_filed(self):
+        state, sent = {}, []
+        inbox = [{"id": "m1", "time": 0, "title": "Committee Subscription", "text": self.MAIL}]
+        items = C.collect(state, NOW, N, lambda *a: sent.append(a), inbox=inbox, fetch=lambda url: self.PAGE)
+        self.assertEqual(len(items), 2)
+        self.assertEqual(N.classify(items[0])["assoc"], "HEAL")
+        self.assertEqual(C.collect(state, NOW + 300, N, lambda *a: sent.append(a), inbox=inbox, fetch=lambda url: self.PAGE), [])
+        path = os.path.join(tempfile.mkdtemp(), "news.json")
+        C.record(path, items, NOW, N)
+        import json
+        rel = json.load(open(os.path.join(os.path.dirname(path), "parliament.json")))["releases"]
+        self.assertEqual(len(rel), 2)
+        self.assertEqual(sent, [])
+
+    def test_confirmation_request_is_passed_on_once(self):
+        state, sent = {}, []
+        inbox = [{"id": "c1", "time": 0, "title": "Please confirm your subscription",
+                  "text": "Confirm: https://www.ourcommons.ca/cmte-subscription/en/Confirm?code=abc"}]
+        for _ in range(2):
+            C.collect(state, NOW, N, lambda *a: sent.append(a), inbox=inbox, fetch=lambda url: "")
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(sent[0][2].startswith("https://www.ourcommons.ca/"))
 
 
 class Icons(unittest.TestCase):

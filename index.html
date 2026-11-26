@@ -130,6 +130,8 @@ body.parl .news-only { display: none !important; }
 .p-list .m { font-size: 12px; color: var(--muted); } .p-list .m .n { color: var(--unread); font-weight: 700; }
 .p-list .m b.CADA { color: var(--cada-text); } .p-list .m b.HEAL { color: var(--heal-text); }
 .p-list .w { font-size: 14px; font-weight: 600; } .p-list .w span { font-weight: 400; color: var(--muted); }
+.p-list a.w { color: var(--text); text-decoration: none; line-height: 1.35; }
+.p-list span.q { font-size: 13px; line-height: 1.4; color: var(--body); }
 .p-list a.q { font-size: 14px; line-height: 1.42; color: var(--body); text-decoration: none; }
 .p-list mark { background: var(--p4-bg); color: var(--p4-fg); padding: 0 2px; border-radius: 3px; }
 /* ---- story cards ---- */
@@ -766,6 +768,7 @@ article.unseen { border-color: var(--new-line); }
     (p.meetings || []).forEach(function (m) { keys.push("m:" + m.url); });
     (p.bills || []).forEach(function (b) { keys.push("b:" + b.num + ":" + b.status); });
     (p.mentions || []).forEach(function (m) { keys.push("s:" + m.link); });
+    (p.releases || []).forEach(function (r) { keys.push("r:" + r.url); });
     return keys;
   }
   function setParl(p) {
@@ -870,6 +873,29 @@ article.unseen { border-color: var(--new-line); }
       restM.forEach(function (m) { cards.appendChild(meetCard(m, false)); });
     }
     sec.appendChild(cards); list.appendChild(sec);
+
+    // -- news releases and reports from committees (from the House e-mail subscription), ours first
+    var rels = (p.releases || []).filter(function (r) { return state.assoc === "all" || r.assoc === state.assoc; })
+      .sort(function (a, b) { return (b.assoc ? 1 : 0) - (a.assoc ? 1 : 0) || b.ts - a.ts; });
+    if (rels.length) {
+      var moreR = !!state.parlMore.rels, shownR = moreR ? rels : rels.slice(0, 5);
+      sec = el("section", { class: "p-sec" }, [el("div", { class: "p-head" }, [el("h2", { text: "FROM COMMITTEES" }), el("span", { text: "releases and reports · last six weeks" })])]);
+      var rl = el("ul", { class: "p-list" });
+      shownR.forEach(function (r) {
+        var key = "r:" + r.url, when = new Date(r.ts * 1000).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+        rl.appendChild(el("li", null, [el("span", { class: "bar " + r.assoc, "aria-hidden": "true" }), el("div", { class: "txt" }, [
+          el("div", { class: "mrow" }, [
+            el("span", { class: "m" }, [assocLabel(r.assoc), document.createTextNode((r.assoc ? " · " : "") + (r.code || r.committee) + " · " + r.kind + " · " + when)]),
+            parlNewPill(key)]),
+          safeLink(r.url) ? el("a", { class: "w", href: r.url, target: "_blank", rel: "noopener", text: r.title }) : el("span", { class: "w", text: r.title }),
+          r.assoc && r.text ? el("span", { class: "q", text: r.text.length > 180 ? r.text.slice(0, 180).replace(/\s+\S*$/, "") + "…" : r.text }) : null
+        ])]));
+      });
+      sec.appendChild(rl);
+      if (rels.length > 5) sec.appendChild(el("button", { type: "button", class: "more", style: "margin-top:8px",
+        text: moreR ? "Show fewer" : "Show " + (rels.length - 5) + " more from committees", onclick: function () { state.parlMore.rels = !moreR; render(); } }));
+      list.appendChild(sec);
+    }
 
     // -- bills, most recent change first
     var bills = (p.bills || []).filter(show);
