@@ -16,7 +16,8 @@ Environment:
   NTFY_SERVER        optional  defaults to https://ntfy.sh
   ANTHROPIC_API_KEY  optional  turns on Claude importance scoring
   CLAUDE_MODEL       optional  defaults to claude-opus-5-5
-  MIN_LEVEL          optional  don't notify below this level (default 2)
+  MIN_LEVEL          optional  ignore stories rated below this level entirely (default 2)
+  ALERT_MIN_LEVEL    optional  only send phone alerts at or above this level (default 3, NOTABLE)
   STATE_FILE         optional  default .cada-state/seen.json
   CHECK_FEEDS=1      optional  test every source, send a health report, change nothing
   DRY_RUN=1          optional  print instead of sending
@@ -547,6 +548,8 @@ KEEP_DAYS = 21
 SIMILAR_HOURS = 7 * 24   # a story similar to one sent in the last week is old news unless it's bigger
 SIMILARITY = 0.5
 MAX_PER_RUN = 10
+MAX_PER_SOURCE_PER_RUN = 3   # a source that publishes a batch at once gets a few alerts, the rest in one summary
+ALERT_MIN_LEVEL = int(os.environ.get("ALERT_MIN_LEVEL") or 3)   # 3 = NOTABLE; set 2 to be notified of FYI stories too
 
 GN = "https://news.google.com/rss/search?hl=en-CA&gl=CA&ceid=CA:en&q="
 BING = "https://www.bing.com/news/search?format=rss&cc=ca&setlang=en-ca&qft=sortbydate%3d%221%22&q="
@@ -852,6 +855,10 @@ Quebec-only or other provincial health stories with no federal angle are usually
 Items from the U.S. Federal Register or the White House are official U.S. actions: rate by their effect on \
 Canadian autos and trade (a tariff proclamation touching vehicles, parts, steel or aluminum is 4-5; unrelated ones are 1). \
 Items from the Canada Gazette are regulations and orders: a final or proposed regulation on one of the association's files is 4. \
+Rate 1 (not relevant) when there is no policy, funding, regulatory or sector-wide angle for the association: a \
+hospital's donation, new equipment, award, opening or staff profile; a single patient's or single clinic's story; \
+a research finding or medical "first" with no policy consequence; routine annual fee adjustments. Features and \
+explainers that do bear on the association's files are 2. \
 Judge from the headline and snippet only; don't assume facts beyond them. Several items may cover the \
 same event: rate each on its own.
 Ongoing stories: you're told today's date, when each item was published, and the stories already on \
@@ -1942,7 +1949,9 @@ def main() -> int:
             continue
         ok += 1
         src_seeding = src["id"].startswith("feed:") and src["id"] not in seeded
-        if src_seeding:
+        # A source read only hourly (the Gazette) may return nothing on its first run; wait until it
+        # has actually been read before calling it "seen", or its whole backlog arrives as news later.
+        if src_seeding and (items or src.get("kind") != "gazette"):
             new_seeds.append(src["id"])
         for it in items:
             t = classify(it)
@@ -2010,10 +2019,13 @@ def main() -> int:
                 if not it.get("development", True) and (it.get("joined") or not stories):
                     it["no_alert"] = True
     keep = [it for it in cands if it["level"] >= threshold(it)]
-    to_send = [it for it in keep if not it.get("no_alert")]
+    # FYI stories are for the page's FYI section; the phone is only for NOTABLE and above.
+    to_send = [it for it in keep if not it.get("no_alert") and it["level"] >= ALERT_MIN_LEVEL]
     for it in keep:
         if it.get("no_alert"):
             print(f"  page only (no alert): {it['title']}")
+        elif it["level"] < ALERT_MIN_LEVEL:
+            print(f"  page only (FYI): {it['title']}")
     sent_recent += [(story_words(it), now, it["level"], strip_source(it["title"])) for it in keep]
 
     # Quiet hours: overnight only CRITICAL alerts go out; the rest wait for the morning brief.
@@ -2054,7 +2066,17 @@ def main() -> int:
 
     # Most important first, so a cap never hides the big one.
     to_send.sort(key=lambda i: (-i["level"], i["ts"]))
-    for it in to_send[:MAX_PER_RUN]:
+    first, later, per_source = [], [], {}
+    for it in to_send:
+        n = per_source.get(it["source"], 0)
+        if n < MAX_PER_SOURCE_PER_RUN or it["level"] >= 5:
+            per_source[it["source"]] = n + 1
+            first.append(it)
+        else:
+            later.append(it)
+    n_send = min(MAX_PER_RUN, len(first))
+    to_send = first + later
+    for it in to_send[:n_send]:
         name, tag = LEVELS[it["level"]]
         age = max(0, int((now - it["ts"]) / 60))
         when = f"{age} min ago" if age < 120 else f"{age // 60} h ago"
@@ -2073,11 +2095,11 @@ def main() -> int:
         print(f"sent L{it['level']} [{it['topic']['key']}]:", it["title"], "|", it["why"])
     if news_path and to_send:
         try:
-            save_go_links(news_path, to_send[:MAX_PER_RUN], now)
+            save_go_links(news_path, to_send[:n_send], now)
         except Exception as e:
             print(f"go links: {e}", file=sys.stderr)
-    if len(to_send) > MAX_PER_RUN:
-        rest = to_send[MAX_PER_RUN:]
+    if len(to_send) > n_send:
+        rest = to_send[n_send:]
         send(server, topic, f"+{len(rest)} more stories",
              "\n".join(f"• {i['topic']['assoc']}: " + strip_source(i["title"]) for i in rest[:8]), priority=2,
              click="https://news.google.com/search?q=CUSMA%20OR%20%22auto%20plant%22%20Canada&hl=en-CA&gl=CA&ceid=CA:en")
