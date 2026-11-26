@@ -1363,8 +1363,33 @@ def read_all(feed_override):
         yield from pool.map(one, sources)
 
 
+def check_urls(urls):
+    """Diagnostic: one line per address saying whether it answers and whether it is a feed."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(u):
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": BROWSER_UA, "Accept": "*/*", "Accept-Language": "en-CA,en;q=0.9"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                body = resp.read(600000).decode("utf-8", "replace")
+                n = len(re.findall(r"<item[\s>]|<entry[\s>]", body))
+                kind = "feed" if n else ("json" if body.lstrip()[:1] in "{[" else "html" if "<html" in body[:3000].lower() else "other")
+                titles = [html.unescape(re.sub(r"<!\[CDATA\[|\]\]>|<[^>]+>", "", t)).strip()[:60]
+                          for t in re.findall(r"<title[^>]*>(.*?)</title>", body, re.S)[1:3]]
+                dates = re.findall(r"<(?:pubDate|updated|published)>([^<]{10,31})", body)[:1]
+                return f"CHECK {resp.status} {kind:5} {n:3} items | {u[:95]} | {dates} {titles if kind == 'feed' else body[:70].split()[:8]}"
+        except Exception as e:
+            return f"CHECK FAIL       | {u[:95]} | {type(e).__name__}: {str(e)[:50]}"
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for line in pool.map(one, urls):
+            print(line)
+    return 0
+
+
 def probe(urls):
     """Diagnostic: fetch each URL from the runner and print what comes back."""
+    if urls.strip().startswith("check "):
+        return check_urls(urls.split()[1:])
     if urls.strip() == "committee-inbox":
         import committee_mail
         return committee_mail.debug_inbox()
