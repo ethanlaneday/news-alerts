@@ -507,7 +507,10 @@ def child(el, name):
 
 def text_of(el, name) -> str:
     c = child(el, name)
-    return (c.text or "").strip() if c is not None and c.text else ""
+    if c is None:
+        return ""
+    # itertext, not .text: some feeds (Statistics Canada) wrap titles in nested markup.
+    return re.sub(r"\s+", " ", "".join(c.itertext())).strip()
 
 
 def parse_time(s: str) -> float:
@@ -1453,6 +1456,31 @@ def gazette_entries(page: str, base: str):
     return out
 
 
+GAZETTE_SECTIONS = re.compile(r"(?i)^(government notices|proposed regulations|commissions)$")
+
+
+def gazette_notices(page: str, base: str):
+    """(title, link) for each notice inside a Part I section page: department, Act, then the notice's own title."""
+    out, cur = [], None
+
+    def flush():
+        if cur and (cur["notice"] or cur["act"]):
+            what = cur["notice"] or cur["act"]
+            out.append((f"{what} ({cur['dept'].title()})"[:240], f"{base}#{cur['id']}"))
+    for tag, attrs, inner in re.findall(r"<(h[2-4])\b([^>]*)>(.*?)</\1>", page, re.S):
+        text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", inner))).strip()
+        anchor = re.search(r'id="([^"]+)"', attrs)
+        if tag == "h2":
+            flush()
+            cur = {"dept": text, "id": anchor.group(1), "act": "", "notice": ""} if anchor and text else None
+        elif cur and tag == "h3" and not cur["act"]:
+            cur["act"] = text
+        elif cur and tag == "h4" and not cur["notice"]:
+            cur["notice"] = text
+    flush()
+    return out
+
+
 def read_gazette(src, data):
     """The two newest issues, opened up into their individual entries. Checked about once an hour."""
     if int(time.time() // 300) % 12 and not os.environ.get("GAZETTE_NOW"):
@@ -1463,7 +1491,16 @@ def read_gazette(src, data):
             page = fetch(issue["link"]).decode("utf-8", "replace")
         except Exception:
             continue
-        for title, link in gazette_entries(page, issue["link"]):
+        found = gazette_entries(page, issue["link"])
+        # Part I groups its notices on a few section pages; open those too.
+        for href, text in re.findall(r'<a\b[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', page, re.S):
+            if GAZETTE_SECTIONS.match(re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text))).strip()):
+                section = urllib.parse.urljoin(issue["link"], href)
+                try:
+                    found += gazette_notices(fetch(section).decode("utf-8", "replace"), section)
+                except Exception:
+                    pass
+        for title, link in found:
             items.append({"title": title, "link": link, "desc": "", "source": src["name"], "source_url": "https://www.gazette.gc.ca",
                           "ts": issue["ts"], "guid": link})
     return items

@@ -347,6 +347,20 @@ class NewSources(unittest.TestCase):
                                                "Certain Motor Vehicles Remission Order"])
         self.assertTrue(all(link.startswith("https://www.gazette.gc.ca/rp-pr/") for _, link in got))
 
+    def test_gazette_part_one_notices_are_read(self):
+        page = ('<h2>Menu</h2><h2 id="ne1">DEPARTMENT OF FINANCE</h2><h3>CUSTOMS TARIFF</h3><h4>Motor Vehicles Remission Order</h4>'
+                '<h2 id="ne2">DEPARTMENT OF HEALTH</h2><h3>FOOD AND DRUGS ACT</h3><h4>Notice of fees</h4><h4>Part 2</h4>')
+        got = N.gazette_notices(page, "https://gazette.gc.ca/x/notice-avis-eng.html")
+        self.assertEqual(got, [("Motor Vehicles Remission Order (Department Of Finance)", "https://gazette.gc.ca/x/notice-avis-eng.html#ne1"),
+                               ("Notice of fees (Department Of Health)", "https://gazette.gc.ca/x/notice-avis-eng.html#ne2")])
+
+    def test_feed_titles_with_nested_markup_are_read(self):
+        atom = b"""<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">New motor
+        vehicle sales, <span>September 2026</span></div></title><link href="https://www.statcan.gc.ca/x"></link>
+        <updated>2026-11-24T08:30:00-05:00</updated></entry></feed>"""
+        got = list(N.parse(atom, "Statistics Canada"))
+        self.assertEqual(got[0]["title"], "New motor vehicle sales, September 2026")
+
     def test_every_source_has_a_unique_name_and_a_secure_address(self):
         srcs = list(N.all_sources())
         self.assertEqual(len({s_["id"] for s_ in srcs}), len(srcs))
