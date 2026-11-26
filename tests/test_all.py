@@ -40,6 +40,27 @@ class Relevance(unittest.TestCase):
         self.assertEqual(self.assoc("Ottawa unveils national pharmacare funding deal with provinces"), "HEAL")
         self.assertEqual(self.assoc("Organizations for Health Action urges federal action on health workforce"), "HEAL")
 
+    def test_new_associations(self):
+        self.assertEqual(self.assoc("Canada's counter-tariffs hit RV parts as dealers seek remission"), "RVDA")
+        self.assertEqual(self.assoc("Parks Canada raises camping fees for 2027"), "RVDA")
+        self.assertEqual(self.assoc("Ottawa extends heat pump rebate program for oil-heated homes"), "HRAI")
+        self.assertEqual(self.assoc("HRAI warns new refrigerant rules will raise costs in Canada"), "HRAI")
+        self.assertEqual(self.assoc("Downtown Toronto office vacancy hits record as federal workers stay home"), "IDA")
+        self.assertEqual(self.assoc("Vancouver encampment ruling puts pressure on B.C. cities"), "IDA")
+
+    def test_common_words_in_the_body_do_not_move_a_story(self):
+        # "ventilation" and "downtown" in the body must not pull a health story to HRAI or IDA.
+        self.assertEqual(self.assoc("Ottawa unveils national pharmacare funding deal with provinces",
+                                    "Patients wait in a downtown Toronto hospital where ventilation was upgraded."), "HEAL")
+        self.assertEqual(self.assoc("Canada and U.S. near deal on auto tariffs under CUSMA",
+                                    "Talks were held at a downtown Ottawa hotel."), "CADA")
+
+    def test_every_association_has_an_icon_and_topics(self):
+        self.assertEqual(set(N.ASSOC_ORDER), set(N.ASSOCS))
+        for a in N.ASSOC_ORDER:
+            self.assertTrue(any(t["assoc"] == a for t in N.TOPICS), a)
+        self.assertEqual(len({t["key"] for t in N.TOPICS}), len(N.TOPICS))
+
     def test_unrelated_story_is_dropped(self):
         self.assertIsNone(self.assoc("Local bakery wins award for best croissant"))
 
