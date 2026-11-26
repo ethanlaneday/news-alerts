@@ -1393,6 +1393,9 @@ def probe(urls):
                 if mark in text:
                     cut = text[text.find(mark) - 200: text.find(mark) + 1500]
                     print("   found:", re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", cut))))
+                docs = re.findall(r'href="([^"]*DocumentViewer[^"]*)"[^>]*>\s*([^<]{0,90})', text)
+                if docs:
+                    print(f"   document links ({len(docs)}):", docs[:10])
                 print("   titles:", [html.unescape(t)[:90] for t in re.findall(r"<title[^>]*>([^<]{3,})", text)[:6]])
                 print("   feed-like links:", links)
         except Exception as e:
