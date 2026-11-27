@@ -219,10 +219,15 @@ article.card.folded .story-head { border-bottom: none; padding-bottom: 6px; }
 .fold-body ol.keys li { padding: 4px 0; }
 .fold-bar { min-height: 44px; }
 ul.rows.fold-rows { padding: 0; background: transparent; } ul.rows.fold-rows li:first-child { border-top: none; padding-top: 2px; }
-.ask-row { display: flex; justify-content: flex-end; margin-top: 2px; }
-.ask { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px;
-  border: 1px solid var(--chip-line); background: var(--card); color: var(--body); font-size: 13px; font-weight: 600; text-decoration: none; }
-.ask svg { width: 15px; height: 15px; color: #D97757; }
+/* "Ask Claude": a small round button tucked into the bottom-right corner of the card's text. */
+.card-body, .fold-body { position: relative; }
+.ask-row { height: 0; margin: -9px 0 0; }
+.fold-body .ask-row { margin-top: -8px; }
+.ask { position: absolute; right: 12px; bottom: 10px; width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center;
+  border: 1px solid var(--chip-line); background: var(--card); box-shadow: 0 1px 2px rgba(16,24,40,0.10); }
+.ask svg { width: 19px; height: 19px; color: #D97757; }
+/* The last line of text keeps clear of the button. */
+.card-body > :nth-last-child(2), .fold-body > :nth-last-child(2) { padding-right: 44px; }
 .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 .kicker .n { color: var(--unread); }
 .tl-wrap { padding: 2px 16px 4px; border-top: 1px solid var(--line); }
@@ -496,9 +501,9 @@ article.unseen { border-color: var(--new-line); }
       href: "https://claude.ai/new?q=" + encodeURIComponent(askPrompt(t, st)), "aria-label": "Ask Claude for a detailed breakdown of this story" }, [
       (function () { var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true");
         var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        p.setAttribute("d", "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z");
-        p.setAttribute("fill", "currentColor"); s.appendChild(p); return s; })(),
-      document.createTextNode("Ask Claude")])]);
+        p.setAttribute("d", "M12.00 9.80L12.00 2.80M13.32 10.24L16.57 5.93M13.91 10.90L19.62 7.60M14.18 12.27L19.15 12.88M13.91 13.10L19.97 16.60M12.86 14.03L14.97 19.00M12.00 14.20L12.00 20.80M10.68 13.76L7.67 17.75M10.09 13.10L4.03 16.60M9.82 11.73L4.46 11.07M10.09 10.90L4.38 7.60M11.14 9.97L9.19 5.37");
+        p.setAttribute("fill", "none"); p.setAttribute("stroke", "currentColor"); p.setAttribute("stroke-width", "2.1"); p.setAttribute("stroke-linecap", "round");
+        s.appendChild(p); return s; })()])]);
   }
 
   // One card per ongoing story: articles that share a thread are grouped.
